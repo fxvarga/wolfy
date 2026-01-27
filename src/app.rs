@@ -5,11 +5,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
     KillTimer, SetTimer, WM_DPICHANGED, WM_PAINT, WM_TIMER,
 };
 
+use crate::log::exe_dir;
 use crate::platform::win32::{
     self, invalidate_window, reposition_window, translate_message, Event, Renderer, WindowConfig,
 };
+use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, LayoutContext, Rect};
-use crate::widget::{EventResult, Textbox, Widget, WidgetState};
+use crate::widget::{EventResult, Textbox, Widget, WidgetState, WidgetStyle};
 
 /// Cursor blink timer ID
 const TIMER_CURSOR_BLINK: usize = 1;
@@ -48,7 +50,34 @@ impl App {
             parent_size: config.width as f32,
         };
 
-        let mut textbox = Textbox::new().with_placeholder("Type to search...");
+        // Load theme from exe directory
+        let theme_path = exe_dir().join("default.rasi");
+        log!("  Loading theme from {:?}", theme_path);
+        let theme = match ThemeTree::load(&theme_path) {
+            Ok(t) => {
+                log!("  Theme loaded successfully");
+                Some(t)
+            }
+            Err(e) => {
+                log!("  Failed to load theme: {:?}, using defaults", e);
+                None
+            }
+        };
+
+        // Create textbox with theme style
+        let style = theme
+            .as_ref()
+            .map(|t| WidgetStyle::from_theme_textbox(t, None))
+            .unwrap_or_default();
+        log!(
+            "  Textbox style: font_size={}, font_family={}",
+            style.font_size,
+            style.font_family
+        );
+
+        let mut textbox = Textbox::new()
+            .with_placeholder("Type to search...")
+            .with_style(style);
         textbox.set_state(WidgetState::Focused);
 
         log!("App::new() completed successfully");

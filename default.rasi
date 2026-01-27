@@ -5,22 +5,26 @@
 * {
     background-color: #1e1e1e;
     text-color: #d4d4d4;
-    font: "Segoe UI 14";
+    font-family: "Segoe UI";
+    font-size: 16;
 }
 
 window {
     background-color: #1e1e1e;
-    border: 1px solid #3c3c3c;
-    border-radius: 8px;
-    padding: 8px;
+    border-width: 1;
+    border-color: #3c3c3c;
+    border-radius: 8;
+    padding: 8;
 }
 
 textbox {
     background-color: #2d2d2d;
     text-color: #ffffff;
-    border: 1px solid #3c3c3c;
-    border-radius: 4px;
-    padding: 8px 12px;
+    border-width: 1;
+    border-color: #3c3c3c;
+    border-radius: 4;
+    padding: 8 12;
+    font-size: 18;
     placeholder-color: #808080;
     cursor-color: #ffffff;
     selection-color: #264f78;
@@ -32,15 +36,15 @@ textbox.focused {
 
 listview {
     background-color: transparent;
-    spacing: 2px;
-    padding: 4px 0;
+    spacing: 2;
+    padding: 4 0;
 }
 
 element {
     background-color: transparent;
     text-color: #d4d4d4;
-    padding: 8px 12px;
-    border-radius: 4px;
+    padding: 8 12;
+    border-radius: 4;
 }
 
 element.selected {
@@ -55,6 +59,6 @@ element.urgent {
 scrollbar {
     background-color: #1e1e1e;
     handle-color: #5a5a5a;
-    handle-width: 8px;
-    border-radius: 4px;
+    handle-width: 8;
+    border-radius: 4;
 }

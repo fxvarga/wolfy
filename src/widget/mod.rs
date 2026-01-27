@@ -6,6 +6,7 @@ pub mod textbox;
 
 use crate::platform::win32::Renderer;
 use crate::platform::Event;
+use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, LayoutContext, Rect};
 
 pub use textbox::Textbox;
@@ -66,6 +67,75 @@ impl Default for WidgetStyle {
             placeholder_color: Color::from_hex("#888888").unwrap_or(Color::WHITE),
             cursor_color: Color::WHITE,
             selection_color: Color::from_hex("#264f78").unwrap_or(Color::BLUE),
+        }
+    }
+}
+
+impl WidgetStyle {
+    /// Load textbox style from theme
+    pub fn from_theme_textbox(theme: &ThemeTree, state: Option<&str>) -> Self {
+        let default = Self::default();
+        Self {
+            background_color: theme.get_color(
+                "textbox",
+                state,
+                "background-color",
+                default.background_color,
+            ),
+            text_color: theme.get_color("textbox", state, "text-color", default.text_color),
+            border_color: theme.get_color("textbox", state, "border-color", default.border_color),
+            border_width: theme.get_number(
+                "textbox",
+                state,
+                "border-width",
+                default.border_width as f64,
+            ) as f32,
+            border_radius: theme.get_number(
+                "textbox",
+                state,
+                "border-radius",
+                default.border_radius as f64,
+            ) as f32,
+            padding_top: theme.get_number(
+                "textbox",
+                state,
+                "padding-top",
+                default.padding_top as f64,
+            ) as f32,
+            padding_right: theme.get_number(
+                "textbox",
+                state,
+                "padding-right",
+                default.padding_right as f64,
+            ) as f32,
+            padding_bottom: theme.get_number(
+                "textbox",
+                state,
+                "padding-bottom",
+                default.padding_bottom as f64,
+            ) as f32,
+            padding_left: theme.get_number(
+                "textbox",
+                state,
+                "padding-left",
+                default.padding_left as f64,
+            ) as f32,
+            font_family: theme.get_string("textbox", state, "font-family", &default.font_family),
+            font_size: theme.get_number("textbox", state, "font-size", default.font_size as f64)
+                as f32,
+            placeholder_color: theme.get_color(
+                "textbox",
+                state,
+                "placeholder-color",
+                default.placeholder_color,
+            ),
+            cursor_color: theme.get_color("textbox", state, "cursor-color", default.cursor_color),
+            selection_color: theme.get_color(
+                "textbox",
+                state,
+                "selection-color",
+                default.selection_color,
+            ),
         }
     }
 }
