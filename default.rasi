@@ -1,0 +1,60 @@
+/* Wolfy Default Theme
+ * A dark theme inspired by modern IDEs
+ */
+
+* {
+    background-color: #1e1e1e;
+    text-color: #d4d4d4;
+    font: "Segoe UI 14";
+}
+
+window {
+    background-color: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+textbox {
+    background-color: #2d2d2d;
+    text-color: #ffffff;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 8px 12px;
+    placeholder-color: #808080;
+    cursor-color: #ffffff;
+    selection-color: #264f78;
+}
+
+textbox.focused {
+    border-color: #007acc;
+}
+
+listview {
+    background-color: transparent;
+    spacing: 2px;
+    padding: 4px 0;
+}
+
+element {
+    background-color: transparent;
+    text-color: #d4d4d4;
+    padding: 8px 12px;
+    border-radius: 4px;
+}
+
+element.selected {
+    background-color: #094771;
+    text-color: #ffffff;
+}
+
+element.urgent {
+    text-color: #f14c4c;
+}
+
+scrollbar {
+    background-color: #1e1e1e;
+    handle-color: #5a5a5a;
+    handle-width: 8px;
+    border-radius: 4px;
+}

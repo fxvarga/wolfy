@@ -1,0 +1,36 @@
+[package]
+name = "wolfy"
+version = "0.1.0"
+edition = "2021"
+description = "A Windows application launcher inspired by rofi"
+authors = ["Wolfy Contributors"]
+
+[dependencies]
+logos = "0.14"
+lalrpop-util = { version = "0.20", features = ["lexer"] }
+dirs = "5.0"
+thiserror = "1.0"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Foundation_Numerics",
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_HiDpi",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_DirectWrite",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+]
+
+[build-dependencies]
+lalrpop = "0.20"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
