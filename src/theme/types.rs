@@ -322,6 +322,61 @@ pub enum LineStyle {
     Dashed,
 }
 
+/// Layout orientation for containers
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Orientation {
+    #[default]
+    Vertical,
+    Horizontal,
+}
+
+impl Orientation {
+    /// Parse from string (used in theme)
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "horizontal" => Some(Orientation::Horizontal),
+            "vertical" => Some(Orientation::Vertical),
+            _ => None,
+        }
+    }
+}
+
+/// Image scaling mode for background images
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ImageScale {
+    /// No scaling, display at native size
+    #[default]
+    None,
+    /// Scale to fit width, maintain aspect ratio
+    Width,
+    /// Scale to fit height, maintain aspect ratio  
+    Height,
+    /// Scale to fill both dimensions (may crop)
+    Both,
+}
+
+impl ImageScale {
+    /// Parse from string (used in theme)
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "none" => Some(ImageScale::None),
+            "width" => Some(ImageScale::Width),
+            "height" => Some(ImageScale::Height),
+            "both" => Some(ImageScale::Both),
+            _ => None,
+        }
+    }
+}
+
+/// Image source for background-image property
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageSource {
+    /// Path to the image (can be "auto" for wallpaper detection)
+    pub path: String,
+    /// How to scale the image
+    pub scale: ImageScale,
+}
+
 /// Rectangle for layout
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Rect {

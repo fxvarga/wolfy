@@ -6,7 +6,7 @@ use std::path::Path;
 
 use crate::theme::ast::{Property, Rule, Selector, Stylesheet, Value};
 use crate::theme::lexer::Lexer;
-use crate::theme::types::{Color, Distance, Padding};
+use crate::theme::types::{Color, Distance, ImageSource, Orientation, Padding};
 
 // Import the generated parser
 use crate::theme::theme_parser;
@@ -255,6 +255,44 @@ impl ThemeTree {
             .and_then(|v| v.as_bool())
             .unwrap_or(default)
     }
+
+    /// Get the children array for a widget (for layout composition)
+    /// Returns the widget names listed in the `children` property
+    pub fn get_children(&self, widget: &str) -> Vec<String> {
+        self.get_value(widget, None, "children")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.to_vec())
+            .unwrap_or_default()
+    }
+
+    /// Get the orientation for a widget (horizontal/vertical)
+    pub fn get_orientation(&self, widget: &str, default: Orientation) -> Orientation {
+        self.get_value(widget, None, "orientation")
+            .and_then(|v| v.as_orientation())
+            .unwrap_or(default)
+    }
+
+    /// Get an image source property
+    pub fn get_image(
+        &self,
+        widget: &str,
+        state: Option<&str>,
+        property: &str,
+    ) -> Option<ImageSource> {
+        self.get_value(widget, state, property)
+            .and_then(|v| v.as_image())
+            .cloned()
+    }
+
+    /// Get the expand property (whether widget should expand to fill space)
+    pub fn get_expand(&self, widget: &str, default: bool) -> bool {
+        self.get_bool(widget, None, "expand", default)
+    }
+
+    /// Get spacing between children in a container
+    pub fn get_spacing(&self, widget: &str, default: Distance) -> Distance {
+        self.get_distance(widget, None, "spacing", default)
+    }
 }
 
 #[cfg(test)]
@@ -411,5 +449,141 @@ textbox.focused {
             (focused_border.b - 204.0 / 255.0).abs() < 0.01,
             "focused border-color blue should be ~0.8"
         );
+    }
+
+    #[test]
+    fn test_children_array() {
+        let theme = ThemeTree::parse(
+            r#"
+            mainbox {
+                orientation: horizontal;
+                children: [ "wallpaper-panel", "listbox" ];
+            }
+            
+            listbox {
+                orientation: vertical;
+                children: [ "inputbar", "listview" ];
+            }
+        "#,
+        )
+        .unwrap();
+
+        // Check mainbox children
+        let children = theme.get_children("mainbox");
+        assert_eq!(children, vec!["wallpaper-panel", "listbox"]);
+
+        // Check listbox children
+        let children = theme.get_children("listbox");
+        assert_eq!(children, vec!["inputbar", "listview"]);
+
+        // Non-existent widget returns empty
+        let children = theme.get_children("nonexistent");
+        assert!(children.is_empty());
+    }
+
+    #[test]
+    fn test_orientation() {
+        use crate::theme::types::Orientation;
+
+        let theme = ThemeTree::parse(
+            r#"
+            mainbox {
+                orientation: horizontal;
+            }
+            
+            listbox {
+                orientation: vertical;
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            theme.get_orientation("mainbox", Orientation::Vertical),
+            Orientation::Horizontal
+        );
+        assert_eq!(
+            theme.get_orientation("listbox", Orientation::Horizontal),
+            Orientation::Vertical
+        );
+        // Default for non-existent
+        assert_eq!(
+            theme.get_orientation("unknown", Orientation::Vertical),
+            Orientation::Vertical
+        );
+    }
+
+    #[test]
+    fn test_url_image() {
+        use crate::theme::types::ImageScale;
+
+        let theme = ThemeTree::parse(
+            r#"
+            wallpaper-panel {
+                background-image: url("auto", width);
+            }
+            
+            icon {
+                background-image: url("/path/to/image.png");
+            }
+        "#,
+        )
+        .unwrap();
+
+        // Check wallpaper with scale
+        let img = theme.get_image("wallpaper-panel", None, "background-image");
+        assert!(img.is_some());
+        let img = img.unwrap();
+        assert_eq!(img.path, "auto");
+        assert_eq!(img.scale, ImageScale::Width);
+
+        // Check icon without scale (defaults to None)
+        let img = theme.get_image("icon", None, "background-image");
+        assert!(img.is_some());
+        let img = img.unwrap();
+        assert_eq!(img.path, "/path/to/image.png");
+        assert_eq!(img.scale, ImageScale::None);
+    }
+
+    #[test]
+    fn test_empty_children_array() {
+        let theme = ThemeTree::parse(
+            r#"
+            leaf-widget {
+                children: [];
+            }
+        "#,
+        )
+        .unwrap();
+
+        let children = theme.get_children("leaf-widget");
+        assert!(children.is_empty());
+    }
+
+    #[test]
+    fn test_expand_and_spacing() {
+        let theme = ThemeTree::parse(
+            r#"
+            container {
+                expand: true;
+                spacing: 10px;
+            }
+            
+            fixed-widget {
+                expand: false;
+                spacing: 2em;
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert!(theme.get_expand("container", false));
+        assert!(!theme.get_expand("fixed-widget", true));
+
+        let spacing = theme.get_spacing("container", Distance::px(0.0));
+        assert_eq!(spacing.value, 10.0);
+
+        let spacing = theme.get_spacing("fixed-widget", Distance::px(0.0));
+        assert_eq!(spacing.value, 2.0);
     }
 }

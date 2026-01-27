@@ -37,12 +37,21 @@ pub enum Token {
     #[token(".")]
     Dot,
 
+    #[token("[")]
+    BracketOpen,
+
+    #[token("]")]
+    BracketClose,
+
     // Keywords
     #[token("rgb")]
     Rgb,
 
     #[token("rgba")]
     Rgba,
+
+    #[token("url")]
+    Url,
 
     #[token("true")]
     True,
@@ -52,6 +61,12 @@ pub enum Token {
 
     #[token("inherit")]
     Inherit,
+
+    #[token("horizontal")]
+    Horizontal,
+
+    #[token("vertical")]
+    Vertical,
 
     // Units
     #[token("px")]

@@ -1,6 +1,8 @@
 //! AST types for the theme parser
 
-use crate::theme::types::{Color, Distance, DistanceUnit, Padding};
+use crate::theme::types::{
+    Color, Distance, DistanceUnit, ImageScale, ImageSource, Orientation, Padding,
+};
 
 /// A complete stylesheet
 #[derive(Debug, Clone)]
@@ -66,6 +68,12 @@ pub enum Value {
     Padding2(Distance, Distance),
     /// Padding shorthand (4 values: top right bottom left)
     Padding4(Distance, Distance, Distance, Distance),
+    /// Array of strings (for children property)
+    Array(Vec<String>),
+    /// Image source with scaling (for background-image)
+    Image(ImageSource),
+    /// Orientation (horizontal/vertical)
+    Orientation(Orientation),
 }
 
 impl Value {
@@ -124,6 +132,31 @@ impl Value {
             Value::Boolean(b) => Some(*b),
             Value::Ident(s) if s == "true" => Some(true),
             Value::Ident(s) if s == "false" => Some(false),
+            _ => None,
+        }
+    }
+
+    /// Try to convert to array of strings
+    pub fn as_array(&self) -> Option<&[String]> {
+        match self {
+            Value::Array(arr) => Some(arr),
+            _ => None,
+        }
+    }
+
+    /// Try to convert to ImageSource
+    pub fn as_image(&self) -> Option<&ImageSource> {
+        match self {
+            Value::Image(img) => Some(img),
+            _ => None,
+        }
+    }
+
+    /// Try to convert to Orientation
+    pub fn as_orientation(&self) -> Option<Orientation> {
+        match self {
+            Value::Orientation(o) => Some(*o),
+            Value::Ident(s) => Orientation::from_str(s),
             _ => None,
         }
     }
