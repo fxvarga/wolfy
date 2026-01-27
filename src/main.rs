@@ -29,6 +29,9 @@ use platform::win32::{
 };
 
 use app::App;
+use log::exe_dir;
+use theme::tree::ThemeTree;
+use widget::WidgetStyle;
 
 fn main() {
     // Initialize logging first
@@ -43,6 +46,35 @@ fn main() {
         log!("DPI awareness enabled");
     }
 
+    // Load theme to determine window dimensions
+    let theme_path = exe_dir().join("default.rasi");
+    log!("Loading theme from {:?}", theme_path);
+    let style = match ThemeTree::load(&theme_path) {
+        Ok(theme) => {
+            log!("Theme loaded successfully");
+            WidgetStyle::from_theme_textbox(&theme, None)
+        }
+        Err(e) => {
+            log!("Failed to load theme: {:?}, using defaults", e);
+            WidgetStyle::default()
+        }
+    };
+
+    // Calculate window height based on font size + padding + border
+    // Formula: font_size + padding_top + padding_bottom + border*2 + some margin
+    let window_height = (style.font_size
+        + style.padding_top
+        + style.padding_bottom
+        + style.border_width * 2.0
+        + 16.0) as i32; // 16px extra margin
+    log!(
+        "Calculated window height: {} (font={}, pad_t={}, pad_b={})",
+        window_height,
+        style.font_size,
+        style.padding_top,
+        style.padding_bottom
+    );
+
     // Register window class
     log!("Registering window class...");
     if let Err(e) = register_window_class() {
@@ -54,7 +86,7 @@ fn main() {
     // Create window configuration
     let config = WindowConfig {
         width: 600,
-        height: 48,
+        height: window_height,
         vertical_position: 0.25, // Upper third
     };
     log!("Config: {}x{}", config.width, config.height);

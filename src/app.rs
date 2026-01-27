@@ -25,6 +25,7 @@ pub struct App {
     config: WindowConfig,
     textbox: Textbox,
     layout_ctx: LayoutContext,
+    style: WidgetStyle,
 }
 
 impl App {
@@ -77,7 +78,7 @@ impl App {
 
         let mut textbox = Textbox::new()
             .with_placeholder("Type to search...")
-            .with_style(style);
+            .with_style(style.clone());
         textbox.set_state(WidgetState::Focused);
 
         log!("App::new() completed successfully");
@@ -87,6 +88,7 @@ impl App {
             config,
             textbox,
             layout_ctx,
+            style,
         })
     }
 
@@ -237,10 +239,15 @@ impl App {
         }
         log!("  begin_draw() succeeded");
 
-        // Clear with dark background
-        log!("  Clearing background...");
-        self.renderer
-            .clear(Color::from_hex("#1e1e1e").unwrap_or(Color::BLACK));
+        // Clear with window background color from theme
+        log!(
+            "  Clearing background with color: r={}, g={}, b={}, a={}",
+            self.style.window_background_color.r,
+            self.style.window_background_color.g,
+            self.style.window_background_color.b,
+            self.style.window_background_color.a
+        );
+        self.renderer.clear(self.style.window_background_color);
 
         // Get client size
         let (width, height) = win32::get_client_size(self.hwnd);

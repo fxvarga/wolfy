@@ -232,7 +232,7 @@ pub fn create_window(config: &WindowConfig) -> Result<HWND, Error> {
         let rect = calculate_window_rect(config, dpi);
 
         let hwnd = CreateWindowExW(
-            // Extended styles: topmost, tool window (no taskbar), layered for transparency
+            // Extended styles: topmost, tool window (no taskbar)
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
             WINDOW_CLASS_NAME,
             w!("Wolfy"),
@@ -249,6 +249,15 @@ pub fn create_window(config: &WindowConfig) -> Result<HWND, Error> {
         )?;
 
         Ok(hwnd)
+    }
+}
+
+/// Set window opacity (0.0 = fully transparent, 1.0 = fully opaque)
+pub fn set_window_opacity(hwnd: HWND, opacity: f32) {
+    let alpha = (opacity.clamp(0.0, 1.0) * 255.0) as u8;
+    log!("set_window_opacity: opacity={}, alpha={}", opacity, alpha);
+    unsafe {
+        let _ = SetLayeredWindowAttributes(hwnd, None, alpha, LWA_ALPHA);
     }
 }
 

@@ -492,13 +492,15 @@ impl Widget for Textbox {
                 content.height,
             ) {
                 let cursor_x = content.x + cursor_x;
+                // Scale cursor width with font size (min 2px)
+                let cursor_width = (self.style.font_size / 12.0).max(2.0);
                 renderer.draw_line(
                     cursor_x,
                     content.y + 2.0,
                     cursor_x,
                     content.y + content.height - 2.0,
                     self.style.cursor_color,
-                    1.5,
+                    cursor_width,
                 )?;
             }
         }

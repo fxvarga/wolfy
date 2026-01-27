@@ -48,6 +48,9 @@ pub struct WidgetStyle {
     pub placeholder_color: Color,
     pub cursor_color: Color,
     pub selection_color: Color,
+    // Window-level properties
+    pub window_background_color: Color,
+    pub window_opacity: f32, // 0.0 = fully transparent, 1.0 = opaque
 }
 
 impl Default for WidgetStyle {
@@ -67,6 +70,8 @@ impl Default for WidgetStyle {
             placeholder_color: Color::from_hex("#888888").unwrap_or(Color::WHITE),
             cursor_color: Color::WHITE,
             selection_color: Color::from_hex("#264f78").unwrap_or(Color::BLUE),
+            window_background_color: Color::from_hex("#1e1e1e").unwrap_or(Color::BLACK),
+            window_opacity: 1.0,
         }
     }
 }
@@ -75,6 +80,15 @@ impl WidgetStyle {
     /// Load textbox style from theme
     pub fn from_theme_textbox(theme: &ThemeTree, state: Option<&str>) -> Self {
         let default = Self::default();
+
+        // Debug: log what we're extracting
+        crate::log!("from_theme_textbox: state={:?}", state);
+        let font_size_val = theme.get_value("textbox", state, "font-size");
+        crate::log!("  font-size value from theme: {:?}", font_size_val);
+        let font_size =
+            theme.get_number("textbox", state, "font-size", default.font_size as f64) as f32;
+        crate::log!("  font-size after get_number: {}", font_size);
+
         Self {
             background_color: theme.get_color(
                 "textbox",
@@ -121,8 +135,7 @@ impl WidgetStyle {
                 default.padding_left as f64,
             ) as f32,
             font_family: theme.get_string("textbox", state, "font-family", &default.font_family),
-            font_size: theme.get_number("textbox", state, "font-size", default.font_size as f64)
-                as f32,
+            font_size,
             placeholder_color: theme.get_color(
                 "textbox",
                 state,
@@ -136,6 +149,29 @@ impl WidgetStyle {
                 "selection-color",
                 default.selection_color,
             ),
+            // Window-level properties from globals (*)
+            window_background_color: {
+                let color = theme.get_color(
+                    "*",
+                    None,
+                    "background-color",
+                    default.window_background_color,
+                );
+                crate::log!(
+                    "  window_background_color from theme: r={}, g={}, b={}, a={}",
+                    color.r,
+                    color.g,
+                    color.b,
+                    color.a
+                );
+                color
+            },
+            window_opacity: {
+                let opacity =
+                    theme.get_number("*", None, "opacity", default.window_opacity as f64) as f32;
+                crate::log!("  window_opacity from theme: {}", opacity);
+                opacity
+            },
         }
     }
 }

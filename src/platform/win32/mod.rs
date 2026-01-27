@@ -13,5 +13,6 @@ pub use render::Renderer;
 pub use window::{
     clear_window_callback, create_window, destroy_window, get_client_size, hide_window,
     invalidate_window, is_window_visible, register_window_class, reposition_window,
-    set_window_callback, show_window, toggle_window, unregister_window_class, WindowConfig,
+    set_window_callback, set_window_opacity, show_window, toggle_window, unregister_window_class,
+    WindowConfig,
 };

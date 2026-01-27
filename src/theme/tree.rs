@@ -99,7 +99,25 @@ impl ThemeTree {
             .parse(lexer)
             .map_err(|e| ThemeError::ParseError(format!("{:?}", e)))?;
 
-        Ok(Self::from_stylesheet(stylesheet))
+        let tree = Self::from_stylesheet(stylesheet);
+
+        // Debug: log what we parsed (only in non-test builds to avoid issues)
+        #[cfg(not(test))]
+        {
+            crate::log!(
+                "Theme parsed: {} globals, {} widgets",
+                tree.globals.len(),
+                tree.widgets.len()
+            );
+            for (name, node) in &tree.widgets {
+                crate::log!("  Widget '{}': {} properties", name, node.properties.len());
+                for (prop, val) in &node.properties {
+                    crate::log!("    {}: {:?}", prop, val);
+                }
+            }
+        }
+
+        Ok(tree)
     }
 
     /// Load a theme from a file
@@ -307,5 +325,91 @@ mod tests {
         let c = theme.get_color("entry", Some("focused"), "text-color", Color::BLACK);
         assert_eq!(c.r, 0.0);
         assert_eq!(c.g, 1.0);
+    }
+
+    #[test]
+    fn test_plain_numbers() {
+        // Test parsing plain numbers without units (like font-size: 24)
+        let theme = ThemeTree::parse(
+            r#"
+            textbox {
+                font-size: 24;
+                border-width: 1;
+                border-radius: 4.5;
+            }
+        "#,
+        )
+        .unwrap();
+
+        // Check that numbers are parsed correctly
+        let font_size = theme.get_number("textbox", None, "font-size", 16.0);
+        assert_eq!(font_size, 24.0);
+
+        let border_width = theme.get_number("textbox", None, "border-width", 0.0);
+        assert_eq!(border_width, 1.0);
+
+        let border_radius = theme.get_number("textbox", None, "border-radius", 0.0);
+        assert_eq!(border_radius, 4.5);
+    }
+
+    #[test]
+    fn test_default_rasi_format() {
+        // Test with the exact format from default.rasi
+        let theme = ThemeTree::parse(
+            r#"
+/* Wolfy Default Theme */
+
+* {
+    background-color: #1e1e1e;
+    text-color: #d4d4d4;
+}
+
+textbox {
+    background-color: #2d2d2d;
+    text-color: #ffffff;
+    border-width: 1;
+    border-color: #3c3c3c;
+    border-radius: 4;
+    padding-top: 8;
+    padding-right: 12;
+    padding-bottom: 8;
+    padding-left: 12;
+    font-size: 24;
+    placeholder-color: #808080;
+    cursor-color: #ffffff;
+    selection-color: #264f78;
+}
+
+textbox.focused {
+    border-color: #007acc;
+}
+        "#,
+        )
+        .unwrap();
+
+        // Check that font-size is parsed
+        let font_size = theme.get_number("textbox", None, "font-size", 16.0);
+        assert_eq!(font_size, 24.0, "font-size should be 24, got {}", font_size);
+
+        // Check colors
+        let bg = theme.get_color("textbox", None, "background-color", Color::BLACK);
+        // #2d2d2d = rgb(45, 45, 45)
+        assert!(
+            (bg.r - 45.0 / 255.0).abs() < 0.01,
+            "background-color red should be ~0.176"
+        );
+
+        // Check focused border color
+        let focused_border =
+            theme.get_color("textbox", Some("focused"), "border-color", Color::BLACK);
+        // #007acc = rgb(0, 122, 204)
+        assert!(
+            focused_border.r < 0.01,
+            "focused border-color red should be 0"
+        );
+        assert!(
+            (focused_border.b - 204.0 / 255.0).abs() < 0.01,
+            "focused border-color blue should be ~0.8"
+        );
     }
 }
