@@ -1,9 +1,8 @@
 /* Wolfy Default Theme */
 
 * {
-    background-color: #fefefe;
+    background-color: rgba(30, 30, 30, 217);
     text-color: #d4d4d4;
-    opacity: 0.95;
 }
 
 textbox {

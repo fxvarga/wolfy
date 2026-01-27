@@ -1,13 +1,18 @@
-//! Direct2D rendering for Wolfy
+//! Direct2D rendering for Wolfy with per-pixel alpha support
 
 use std::collections::HashMap;
 
 use windows::core::Error;
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, POINT, SIZE};
 use windows::Win32::Graphics::Direct2D::Common::*;
 use windows::Win32::Graphics::Direct2D::*;
 use windows::Win32::Graphics::DirectWrite::*;
-use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN;
+use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+use windows::Win32::Graphics::Gdi::{
+    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, BITMAPINFO,
+    BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, HGDIOBJ,
+};
+use windows::Win32::UI::WindowsAndMessaging::{UpdateLayeredWindow, ULW_ALPHA};
 
 use super::dpi::DpiInfo;
 use super::window::get_client_size;
@@ -33,11 +38,99 @@ impl From<Color> for BrushKey {
     }
 }
 
-/// Direct2D rendering context
+/// Offscreen buffer for per-pixel alpha rendering
+struct OffscreenBuffer {
+    dc: HDC,
+    bitmap: windows::Win32::Graphics::Gdi::HBITMAP,
+    old_bitmap: HGDIOBJ,
+    width: i32,
+    height: i32,
+}
+
+impl OffscreenBuffer {
+    fn new(width: i32, height: i32) -> Result<Self, Error> {
+        log!("OffscreenBuffer::new({}x{})", width, height);
+
+        if width <= 0 || height <= 0 {
+            return Err(Error::from_win32());
+        }
+
+        unsafe {
+            // Create a memory DC
+            let dc = CreateCompatibleDC(HDC::default());
+            if dc.is_invalid() {
+                log!("  CreateCompatibleDC failed");
+                return Err(Error::from_win32());
+            }
+            log!("  Created memory DC: {:?}", dc);
+
+            // Create a 32-bit DIB section for ARGB
+            let bmi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: width,
+                    biHeight: -height, // Top-down DIB (negative height)
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    biSizeImage: 0,
+                    biXPelsPerMeter: 0,
+                    biYPelsPerMeter: 0,
+                    biClrUsed: 0,
+                    biClrImportant: 0,
+                },
+                bmiColors: [Default::default()],
+            };
+
+            let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
+            let bitmap = CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &mut bits, None, 0)?;
+
+            if bitmap.is_invalid() {
+                log!("  CreateDIBSection failed");
+                DeleteDC(dc);
+                return Err(Error::from_win32());
+            }
+            log!("  Created DIB section: {:?}", bitmap);
+
+            // Select the bitmap into the DC
+            let old_bitmap = SelectObject(dc, bitmap);
+            log!("  Selected bitmap into DC");
+
+            Ok(Self {
+                dc,
+                bitmap,
+                old_bitmap,
+                width,
+                height,
+            })
+        }
+    }
+
+    fn dc(&self) -> HDC {
+        self.dc
+    }
+
+    fn size(&self) -> (i32, i32) {
+        (self.width, self.height)
+    }
+}
+
+impl Drop for OffscreenBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            SelectObject(self.dc, self.old_bitmap);
+            let _ = DeleteObject(self.bitmap);
+            DeleteDC(self.dc);
+        }
+    }
+}
+
+/// Direct2D rendering context with per-pixel alpha support
 pub struct Renderer {
     factory: ID2D1Factory,
     dwrite_factory: IDWriteFactory,
-    render_target: Option<ID2D1HwndRenderTarget>,
+    render_target: Option<ID2D1DCRenderTarget>,
+    offscreen: Option<OffscreenBuffer>,
     brush_cache: HashMap<BrushKey, ID2D1SolidColorBrush>,
     hwnd: HWND,
     dpi: DpiInfo,
@@ -65,20 +158,18 @@ impl Renderer {
             factory,
             dwrite_factory,
             render_target: None,
+            offscreen: None,
             brush_cache: HashMap::new(),
             hwnd,
             dpi,
         };
 
-        // NOTE: Don't create render target here - window may be hidden (size 0,0)
-        // Render target will be created lazily on first draw when window is visible
         log!("Renderer::new() completed (render_target=None, will create lazily)");
 
         Ok(renderer)
     }
 
-    /// Create or recreate the render target
-    /// Returns Ok(true) if target was created, Ok(false) if window has zero size
+    /// Create or recreate the render target and offscreen buffer
     fn create_render_target(&mut self) -> Result<bool, Error> {
         log!("create_render_target() called");
 
@@ -91,10 +182,16 @@ impl Renderer {
             return Ok(false);
         }
 
+        // Create offscreen buffer
+        log!("  Creating offscreen buffer...");
+        let offscreen = OffscreenBuffer::new(width, height)?;
+        log!("  Offscreen buffer created");
+
+        // Create DC render target properties for premultiplied alpha
         let render_props = D2D1_RENDER_TARGET_PROPERTIES {
             r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
             pixelFormat: D2D1_PIXEL_FORMAT {
-                format: DXGI_FORMAT_UNKNOWN,
+                format: DXGI_FORMAT_B8G8R8A8_UNORM,
                 alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
             },
             dpiX: self.dpi.dpi as f32,
@@ -103,30 +200,30 @@ impl Renderer {
             minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
         };
 
-        let hwnd_props = D2D1_HWND_RENDER_TARGET_PROPERTIES {
-            hwnd: self.hwnd,
-            pixelSize: D2D_SIZE_U {
-                width: width as u32,
-                height: height as u32,
-            },
-            presentOptions: D2D1_PRESENT_OPTIONS_NONE,
-        };
-
         self.brush_cache.clear();
 
-        log!("  Calling CreateHwndRenderTarget...");
+        log!("  Calling CreateDCRenderTarget...");
         unsafe {
-            match self
-                .factory
-                .CreateHwndRenderTarget(&render_props, &hwnd_props)
-            {
+            match self.factory.CreateDCRenderTarget(&render_props) {
                 Ok(target) => {
-                    log!("  CreateHwndRenderTarget succeeded");
+                    log!("  CreateDCRenderTarget succeeded");
+
+                    // Bind to the offscreen DC
+                    let rect = windows::Win32::Foundation::RECT {
+                        left: 0,
+                        top: 0,
+                        right: width,
+                        bottom: height,
+                    };
+                    target.BindDC(offscreen.dc(), &rect)?;
+                    log!("  BindDC succeeded");
+
                     self.render_target = Some(target);
+                    self.offscreen = Some(offscreen);
                     Ok(true)
                 }
                 Err(e) => {
-                    log!("  CreateHwndRenderTarget FAILED: {:?}", e);
+                    log!("  CreateDCRenderTarget FAILED: {:?}", e);
                     Err(e)
                 }
             }
@@ -135,7 +232,26 @@ impl Renderer {
 
     /// Ensure render target exists and is valid, creating if needed
     fn ensure_render_target(&mut self) -> Result<bool, Error> {
-        if self.render_target.is_some() {
+        let (width, height) = get_client_size(self.hwnd);
+
+        // Check if we need to recreate due to size change
+        if let Some(ref offscreen) = self.offscreen {
+            let (buf_w, buf_h) = offscreen.size();
+            if buf_w != width || buf_h != height {
+                log!(
+                    "ensure_render_target: size changed from {}x{} to {}x{}, recreating",
+                    buf_w,
+                    buf_h,
+                    width,
+                    height
+                );
+                self.render_target = None;
+                self.offscreen = None;
+                self.brush_cache.clear();
+            }
+        }
+
+        if self.render_target.is_some() && self.offscreen.is_some() {
             log!("ensure_render_target: target already exists");
             return Ok(true);
         }
@@ -149,27 +265,19 @@ impl Renderer {
             dpi: new_dpi,
             scale_factor: new_dpi as f32 / 96.0,
         };
-        // Recreate render target if it exists; ignore if window has zero size
-        if self.render_target.is_some() {
-            self.render_target = None;
-            self.brush_cache.clear();
-            let _ = self.create_render_target();
-        }
+        // Force recreate on next draw
+        self.render_target = None;
+        self.offscreen = None;
+        self.brush_cache.clear();
         Ok(())
     }
 
     /// Handle resize
     pub fn handle_resize(&mut self) -> Result<(), Error> {
-        let (width, height) = get_client_size(self.hwnd);
-        if let Some(ref target) = self.render_target {
-            unsafe {
-                let size = D2D_SIZE_U {
-                    width: width as u32,
-                    height: height as u32,
-                };
-                target.Resize(&size)?;
-            }
-        }
+        // Force recreate on next draw - size will be checked in ensure_render_target
+        self.render_target = None;
+        self.offscreen = None;
+        self.brush_cache.clear();
         Ok(())
     }
 
@@ -193,10 +301,7 @@ impl Renderer {
             a: color.a,
         };
 
-        let brush = unsafe {
-            // ID2D1HwndRenderTarget inherits from ID2D1RenderTarget
-            target.CreateSolidColorBrush(&d2d_color, None)?
-        };
+        let brush = unsafe { target.CreateSolidColorBrush(&d2d_color, None)? };
 
         self.brush_cache.insert(key, brush.clone());
         Ok(brush)
@@ -245,7 +350,7 @@ impl Renderer {
         false
     }
 
-    /// End drawing
+    /// End drawing and update the layered window
     pub fn end_draw(&self) -> Result<(), Error> {
         log!("end_draw() called");
         if let Some(ref target) = self.render_target {
@@ -255,13 +360,61 @@ impl Renderer {
                 log!("  EndDraw() result: {:?}", result);
                 result?;
             }
+
+            // Update the layered window with the offscreen buffer
+            if let Some(ref offscreen) = self.offscreen {
+                self.update_layered_window(offscreen)?;
+            }
         } else {
             log!("  No render target, skipping EndDraw");
         }
         Ok(())
     }
 
-    /// Clear the render target
+    /// Update the layered window with per-pixel alpha
+    fn update_layered_window(&self, offscreen: &OffscreenBuffer) -> Result<(), Error> {
+        log!("update_layered_window() called");
+
+        let (width, height) = offscreen.size();
+
+        unsafe {
+            let pt_src = POINT { x: 0, y: 0 };
+            let size = SIZE {
+                cx: width,
+                cy: height,
+            };
+
+            // BLENDFUNCTION for per-pixel alpha
+            let blend = windows::Win32::Graphics::Gdi::BLENDFUNCTION {
+                BlendOp: windows::Win32::Graphics::Gdi::AC_SRC_OVER as u8,
+                BlendFlags: 0,
+                SourceConstantAlpha: 255, // Use per-pixel alpha, not constant
+                AlphaFormat: windows::Win32::Graphics::Gdi::AC_SRC_ALPHA as u8,
+            };
+
+            let result = UpdateLayeredWindow(
+                self.hwnd,
+                HDC::default(), // Use screen DC
+                None,           // Keep window position
+                Some(&size),
+                offscreen.dc(),
+                Some(&pt_src),
+                None, // No color key
+                Some(&blend),
+                ULW_ALPHA,
+            );
+
+            if result.is_err() {
+                log!("  UpdateLayeredWindow failed: {:?}", result);
+            } else {
+                log!("  UpdateLayeredWindow succeeded");
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Clear the render target with a color (supports alpha for transparent background)
     pub fn clear(&self, color: Color) {
         if let Some(ref target) = self.render_target {
             let d2d_color = D2D1_COLOR_F {

@@ -232,8 +232,8 @@ pub fn create_window(config: &WindowConfig) -> Result<HWND, Error> {
         let rect = calculate_window_rect(config, dpi);
 
         let hwnd = CreateWindowExW(
-            // Extended styles: topmost, tool window (no taskbar)
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+            // Extended styles: topmost, tool window (no taskbar), layered for per-pixel alpha
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
             WINDOW_CLASS_NAME,
             w!("Wolfy"),
             // Popup window (no frame), initially hidden
