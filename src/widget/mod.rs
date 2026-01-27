@@ -4,16 +4,20 @@
 
 pub mod base;
 pub mod container;
+pub mod element;
+pub mod listview;
 pub mod panel;
 pub mod textbox;
 
 use crate::platform::win32::Renderer;
 use crate::platform::Event;
 use crate::theme::tree::ThemeTree;
-use crate::theme::types::{Color, LayoutContext, Rect};
+use crate::theme::types::{Color, ImageSource, LayoutContext, Rect};
 
 pub use base::{ArrangedBounds, Constraints, LayoutProps, MeasuredSize, Size};
 pub use container::{Container, ContainerStyle};
+pub use element::{Element, ElementData, ElementStyle};
+pub use listview::{ListView, ListViewStyle};
 pub use panel::{Panel, PanelStyle};
 pub use textbox::Textbox;
 
@@ -56,6 +60,7 @@ pub struct WidgetStyle {
     pub selection_color: Color,
     // Window-level properties
     pub window_background_color: Color,
+    pub window_background_image: Option<ImageSource>,
     pub window_opacity: f32, // 0.0 = fully transparent, 1.0 = opaque
 }
 
@@ -77,6 +82,7 @@ impl Default for WidgetStyle {
             cursor_color: Color::WHITE,
             selection_color: Color::from_hex("#264f78").unwrap_or(Color::BLUE),
             window_background_color: Color::from_hex("#1e1e1e").unwrap_or(Color::BLACK),
+            window_background_image: None,
             window_opacity: 1.0,
         }
     }
@@ -171,6 +177,11 @@ impl WidgetStyle {
                     color.a
                 );
                 color
+            },
+            window_background_image: {
+                let image = theme.get_image("*", None, "background-image");
+                crate::log!("  window_background_image from theme: {:?}", image);
+                image
             },
             window_opacity: {
                 let opacity =

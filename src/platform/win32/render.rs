@@ -15,6 +15,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::WindowsAndMessaging::{UpdateLayeredWindow, ULW_ALPHA};
 
 use super::dpi::DpiInfo;
+use super::image::LoadedImage;
 use super::window::get_client_size;
 use crate::theme::types::Color;
 
@@ -674,6 +675,141 @@ impl Renderer {
 
             Ok(pos)
         }
+    }
+
+    /// Create a Direct2D bitmap from a loaded image
+    pub fn create_bitmap(&self, image: &LoadedImage) -> Result<ID2D1Bitmap, Error> {
+        let target = self
+            .render_target
+            .as_ref()
+            .ok_or_else(|| Error::from_win32())?;
+
+        image.create_d2d_bitmap(target)
+    }
+
+    /// Draw a bitmap at the specified position with opacity
+    pub fn draw_bitmap(
+        &self,
+        bitmap: &ID2D1Bitmap,
+        dest_rect: D2D_RECT_F,
+        opacity: f32,
+    ) -> Result<(), Error> {
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                target.DrawBitmap(
+                    bitmap,
+                    Some(&dest_rect),
+                    opacity,
+                    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                    None, // Use entire source bitmap
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Draw a bitmap, stretching to fill the destination rectangle
+    pub fn draw_bitmap_stretched(
+        &self,
+        bitmap: &ID2D1Bitmap,
+        dest_rect: D2D_RECT_F,
+        opacity: f32,
+    ) -> Result<(), Error> {
+        self.draw_bitmap(bitmap, dest_rect, opacity)
+    }
+
+    /// Draw a bitmap centered within the destination rectangle
+    /// The bitmap maintains its aspect ratio and is centered
+    pub fn draw_bitmap_centered(
+        &self,
+        bitmap: &ID2D1Bitmap,
+        dest_rect: D2D_RECT_F,
+        opacity: f32,
+    ) -> Result<(), Error> {
+        if let Some(ref target) = self.render_target {
+            let size = unsafe { bitmap.GetSize() };
+            let bitmap_width = size.width;
+            let bitmap_height = size.height;
+
+            let dest_width = dest_rect.right - dest_rect.left;
+            let dest_height = dest_rect.bottom - dest_rect.top;
+
+            // Calculate centered position
+            let x_offset = (dest_width - bitmap_width) / 2.0;
+            let y_offset = (dest_height - bitmap_height) / 2.0;
+
+            let centered_rect = D2D_RECT_F {
+                left: dest_rect.left + x_offset,
+                top: dest_rect.top + y_offset,
+                right: dest_rect.left + x_offset + bitmap_width,
+                bottom: dest_rect.top + y_offset + bitmap_height,
+            };
+
+            unsafe {
+                target.DrawBitmap(
+                    bitmap,
+                    Some(&centered_rect),
+                    opacity,
+                    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                    None,
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Draw a bitmap covering the destination rectangle (may crop)
+    /// The bitmap maintains aspect ratio and fills the entire dest_rect
+    pub fn draw_bitmap_cover(
+        &self,
+        bitmap: &ID2D1Bitmap,
+        dest_rect: D2D_RECT_F,
+        opacity: f32,
+    ) -> Result<(), Error> {
+        if let Some(ref target) = self.render_target {
+            let size = unsafe { bitmap.GetSize() };
+            let bitmap_width = size.width;
+            let bitmap_height = size.height;
+
+            let dest_width = dest_rect.right - dest_rect.left;
+            let dest_height = dest_rect.bottom - dest_rect.top;
+
+            // Calculate scale to cover the destination
+            let scale_x = dest_width / bitmap_width;
+            let scale_y = dest_height / bitmap_height;
+            let scale = scale_x.max(scale_y);
+
+            // Calculate the source rect to crop
+            let src_width = dest_width / scale;
+            let src_height = dest_height / scale;
+
+            // Center the crop
+            let src_x = (bitmap_width - src_width) / 2.0;
+            let src_y = (bitmap_height - src_height) / 2.0;
+
+            let src_rect = D2D_RECT_F {
+                left: src_x,
+                top: src_y,
+                right: src_x + src_width,
+                bottom: src_y + src_height,
+            };
+
+            unsafe {
+                target.DrawBitmap(
+                    bitmap,
+                    Some(&dest_rect),
+                    opacity,
+                    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                    Some(&src_rect),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Get render target (for advanced bitmap operations)
+    pub fn render_target(&self) -> Option<&ID2D1DCRenderTarget> {
+        self.render_target.as_ref()
     }
 }
 

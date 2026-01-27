@@ -1,9 +1,14 @@
 //! Panel widget - background container with color or image
 
-use crate::platform::win32::Renderer;
+use std::cell::RefCell;
+use std::path::Path;
+
+use windows::Win32::Graphics::Direct2D::ID2D1Bitmap;
+
+use crate::platform::win32::{get_wallpaper_path, ImageLoader, Renderer};
 use crate::platform::Event;
 use crate::theme::tree::ThemeTree;
-use crate::theme::types::{Color, ImageSource, LayoutContext, Rect};
+use crate::theme::types::{Color, ImageScale, ImageSource, LayoutContext, Rect};
 
 use super::base::{Constraints, LayoutProps, MeasuredSize};
 use super::{EventResult, Widget, WidgetState, WidgetStyle};
@@ -18,6 +23,16 @@ pub struct Panel {
     style: PanelStyle,
     /// Widget state
     state: WidgetState,
+    /// Cached bitmap for background image (RefCell for interior mutability in render)
+    cached_bitmap: RefCell<Option<CachedBitmap>>,
+}
+
+/// Cached bitmap with its source info for invalidation
+struct CachedBitmap {
+    bitmap: ID2D1Bitmap,
+    source_path: String,
+    width: u32,
+    height: u32,
 }
 
 /// Style for panel widget
@@ -75,6 +90,7 @@ impl Panel {
             layout: LayoutProps::default(),
             style: PanelStyle::default(),
             state: WidgetState::Normal,
+            cached_bitmap: RefCell::new(None),
         }
     }
 
@@ -87,6 +103,8 @@ impl Panel {
     /// Set background image
     pub fn with_background_image(mut self, image: ImageSource) -> Self {
         self.style.background_image = Some(image);
+        // Clear cached bitmap when image changes
+        *self.cached_bitmap.borrow_mut() = None;
         self
     }
 
@@ -111,6 +129,8 @@ impl Panel {
     /// Set style
     pub fn with_style(mut self, style: PanelStyle) -> Self {
         self.style = style;
+        // Clear cached bitmap when style changes
+        *self.cached_bitmap.borrow_mut() = None;
         self
     }
 
@@ -137,11 +157,114 @@ impl Panel {
 
         // Load style
         self.style = PanelStyle::from_theme(theme, &self.name, None);
+        // Clear cached bitmap when loading from theme
+        *self.cached_bitmap.borrow_mut() = None;
     }
 
     /// Get the background image source (for loading)
     pub fn background_image(&self) -> Option<&ImageSource> {
         self.style.background_image.as_ref()
+    }
+
+    /// Invalidate the cached bitmap (call when window resizes)
+    pub fn invalidate_bitmap(&self) {
+        *self.cached_bitmap.borrow_mut() = None;
+    }
+
+    /// Resolve the image path, handling "auto" for wallpaper
+    fn resolve_image_path(path: &str) -> Option<String> {
+        if path.eq_ignore_ascii_case("auto") {
+            // Get system wallpaper
+            get_wallpaper_path().map(|p| p.to_string_lossy().into_owned())
+        } else {
+            Some(path.to_string())
+        }
+    }
+
+    /// Load and cache the background bitmap
+    fn ensure_bitmap(
+        &self,
+        renderer: &Renderer,
+        rect_width: u32,
+        rect_height: u32,
+    ) -> Option<ID2D1Bitmap> {
+        let image_source = self.style.background_image.as_ref()?;
+
+        // Check if we have a valid cached bitmap
+        {
+            let cache = self.cached_bitmap.borrow();
+            if let Some(ref cached) = *cache {
+                // Check if cache is still valid (same path and reasonable size)
+                if cached.source_path == image_source.path {
+                    return Some(cached.bitmap.clone());
+                }
+            }
+        }
+
+        // Need to load the image
+        let resolved_path = Self::resolve_image_path(&image_source.path)?;
+        crate::log!(
+            "Panel '{}' loading image: {} (resolved from {})",
+            self.name,
+            resolved_path,
+            image_source.path
+        );
+
+        // Create image loader
+        let loader = match ImageLoader::new() {
+            Ok(l) => l,
+            Err(e) => {
+                crate::log!("Failed to create ImageLoader: {:?}", e);
+                return None;
+            }
+        };
+
+        // Load with appropriate scaling
+        let loaded = match image_source.scale {
+            ImageScale::None => loader.load_from_file(Path::new(&resolved_path)),
+            ImageScale::Width => {
+                loader.load_scaled(Path::new(&resolved_path), rect_width, 0, ImageScale::Width)
+            }
+            ImageScale::Height => loader.load_scaled(
+                Path::new(&resolved_path),
+                0,
+                rect_height,
+                ImageScale::Height,
+            ),
+            ImageScale::Both => {
+                loader.load_cover(Path::new(&resolved_path), rect_width, rect_height)
+            }
+        };
+
+        let loaded = match loaded {
+            Ok(l) => l,
+            Err(e) => {
+                crate::log!("Failed to load image '{}': {:?}", resolved_path, e);
+                return None;
+            }
+        };
+
+        crate::log!("  Loaded image: {}x{}", loaded.width(), loaded.height());
+
+        // Create D2D bitmap
+        let bitmap = match renderer.create_bitmap(&loaded) {
+            Ok(b) => b,
+            Err(e) => {
+                crate::log!("Failed to create D2D bitmap: {:?}", e);
+                return None;
+            }
+        };
+
+        // Cache it
+        let cached = CachedBitmap {
+            bitmap: bitmap.clone(),
+            source_path: image_source.path.clone(),
+            width: loaded.width(),
+            height: loaded.height(),
+        };
+        *self.cached_bitmap.borrow_mut() = Some(cached);
+
+        Some(bitmap)
     }
 }
 
@@ -166,10 +289,17 @@ impl Widget for Panel {
             bottom: rect.y + rect.height,
         };
 
-        // TODO: Draw background image if present
-        // For now, just draw background color
+        // Draw background image if present
+        if self.style.background_image.is_some() {
+            if let Some(bitmap) =
+                self.ensure_bitmap(renderer, rect.width as u32, rect.height as u32)
+            {
+                // Draw the bitmap covering the entire panel
+                renderer.draw_bitmap_cover(&bitmap, bounds, 1.0)?;
+            }
+        }
 
-        // Draw background if not transparent
+        // Draw background color (can overlay on top of image for tinting)
         if self.style.background_color.a > 0.0 {
             if self.style.border_radius > 0.0 {
                 renderer.fill_rounded_rect(
@@ -257,5 +387,15 @@ mod tests {
 
         assert_eq!(panel.name(), "wallpaper-panel");
         assert!(panel.layout.expand);
+    }
+
+    #[test]
+    fn test_resolve_image_path() {
+        // Non-auto paths should be returned as-is
+        let path = Panel::resolve_image_path("/path/to/image.png");
+        assert_eq!(path, Some("/path/to/image.png".to_string()));
+
+        // "auto" resolves to None in test environment (no wallpaper available)
+        // In real Windows environment it would return the wallpaper path
     }
 }

@@ -60,19 +60,24 @@ fn main() {
         }
     };
 
-    // Calculate window height based on font size + padding + border
-    // Formula: font_size + padding_top + padding_bottom + border*2 + some margin
-    let window_height = (style.font_size
+    // Calculate window height based on font size + padding + border + listview
+    // Textbox: font_size + padding_top + padding_bottom + border*2
+    // ListView: element_height * max_visible_items + padding
+    let textbox_height = style.font_size
         + style.padding_top
         + style.padding_bottom
         + style.border_width * 2.0
-        + 16.0) as i32; // 16px extra margin
+        + 16.0; // Extra margin
+
+    // Listview: 10 items * 40px height + padding
+    let listview_height = 10.0 * 42.0 + 16.0; // 10 items with spacing + padding
+
+    let window_height = (textbox_height + listview_height + 24.0) as i32; // 24px for spacing
     log!(
-        "Calculated window height: {} (font={}, pad_t={}, pad_b={})",
+        "Calculated window height: {} (textbox={}, listview={})",
         window_height,
-        style.font_size,
-        style.padding_top,
-        style.padding_bottom
+        textbox_height,
+        listview_height
     );
 
     // Register window class
@@ -84,8 +89,9 @@ fn main() {
     log!("Window class registered");
 
     // Create window configuration
+    // Split panel: 300px wallpaper + ~500px listbox = ~800px total
     let config = WindowConfig {
-        width: 600,
+        width: 850,
         height: window_height,
         vertical_position: 0.25, // Upper third
     };
