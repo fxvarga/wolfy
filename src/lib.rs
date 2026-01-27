@@ -12,3 +12,9 @@ pub mod log;
 
 // Expose theme module for testing
 pub mod theme;
+
+// Widget base types (no Windows dependencies)
+pub mod widget {
+    pub mod base;
+    pub use base::*;
+}

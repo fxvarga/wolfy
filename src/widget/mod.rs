@@ -2,6 +2,9 @@
 //!
 //! Widgets are UI components that can be rendered and handle events.
 
+pub mod base;
+pub mod container;
+pub mod panel;
 pub mod textbox;
 
 use crate::platform::win32::Renderer;
@@ -9,6 +12,9 @@ use crate::platform::Event;
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, LayoutContext, Rect};
 
+pub use base::{ArrangedBounds, Constraints, LayoutProps, MeasuredSize, Size};
+pub use container::{Container, ContainerStyle};
+pub use panel::{Panel, PanelStyle};
 pub use textbox::Textbox;
 
 /// Widget rendering state
@@ -236,4 +242,29 @@ pub trait Widget {
 
     /// Set the widget's style
     fn set_style(&mut self, style: WidgetStyle);
+
+    // --- Layout system methods ---
+
+    /// Measure the widget's desired size given constraints
+    fn measure(&self, constraints: Constraints, ctx: &LayoutContext) -> MeasuredSize {
+        // Default: return minimum or constrained size
+        MeasuredSize::new(constraints.min.width, constraints.min.height)
+    }
+
+    /// Arrange the widget within the given bounds
+    /// This is called after measure() to position child widgets
+    fn arrange(&mut self, _bounds: Rect, _ctx: &LayoutContext) {
+        // Default: no children to arrange
+    }
+
+    /// Get layout properties for this widget
+    fn layout_props(&self) -> &LayoutProps {
+        static DEFAULT: std::sync::OnceLock<LayoutProps> = std::sync::OnceLock::new();
+        DEFAULT.get_or_init(LayoutProps::default)
+    }
+
+    /// Get the widget's name (for theme lookups)
+    fn widget_name(&self) -> &str {
+        ""
+    }
 }

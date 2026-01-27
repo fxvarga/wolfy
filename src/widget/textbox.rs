@@ -7,6 +7,7 @@ use crate::platform::win32::{render::rect as d2d_rect, Renderer};
 use crate::platform::{Event, KeyCode};
 use crate::theme::types::{LayoutContext, Rect};
 
+use super::base::{Constraints, LayoutProps, MeasuredSize};
 use super::{EventResult, Widget, WidgetState, WidgetStyle};
 
 /// A single-line text input widget
@@ -23,6 +24,8 @@ pub struct Textbox {
     state: WidgetState,
     /// Visual style
     style: WidgetStyle,
+    /// Layout properties
+    layout: LayoutProps,
     /// Cached text format
     text_format: Option<IDWriteTextFormat>,
     /// Cursor blink state
@@ -46,6 +49,7 @@ impl Textbox {
             placeholder: String::new(),
             state: WidgetState::Normal,
             style: WidgetStyle::default(),
+            layout: LayoutProps::default(),
             text_format: None,
             cursor_visible: true,
             scroll_offset: 0.0,
@@ -523,5 +527,32 @@ impl Widget for Textbox {
     fn set_style(&mut self, style: WidgetStyle) {
         self.style = style;
         self.text_format = None; // Invalidate cached format
+    }
+
+    fn measure(&self, constraints: Constraints, _ctx: &LayoutContext) -> MeasuredSize {
+        // Calculate desired height based on font size + padding
+        let height = self.style.font_size
+            + self.style.padding_top
+            + self.style.padding_bottom
+            + self.style.border_width * 2.0
+            + 8.0; // Extra padding for cursor/descenders
+
+        // Width: use available width or fixed if specified
+        let width = self
+            .layout
+            .fixed_width
+            .unwrap_or(constraints.max.width)
+            .min(constraints.max.width)
+            .max(constraints.min.width);
+
+        MeasuredSize::new(width, height)
+    }
+
+    fn layout_props(&self) -> &LayoutProps {
+        &self.layout
+    }
+
+    fn widget_name(&self) -> &str {
+        "textbox"
     }
 }
