@@ -197,14 +197,16 @@ impl Renderer {
         log!("  Offscreen buffer created");
 
         // Create DC render target properties for premultiplied alpha
+        // Use 96 DPI (1:1 pixel mapping) since we're rendering to a physical pixel buffer
+        // The window and offscreen buffer are already sized in physical pixels
         let render_props = D2D1_RENDER_TARGET_PROPERTIES {
             r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
             pixelFormat: D2D1_PIXEL_FORMAT {
                 format: DXGI_FORMAT_B8G8R8A8_UNORM,
                 alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
             },
-            dpiX: self.dpi.dpi as f32,
-            dpiY: self.dpi.dpi as f32,
+            dpiX: 96.0, // Use 96 DPI - we handle scaling ourselves
+            dpiY: 96.0,
             usage: D2D1_RENDER_TARGET_USAGE_NONE,
             minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
         };

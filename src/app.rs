@@ -1318,6 +1318,13 @@ impl App {
 
         if visible {
             log!("  Window now visible, setting up...");
+
+            // Reposition window with correct DPI scaling before showing content
+            win32::reposition_window(self.hwnd, &self.config);
+
+            // Force renderer to recreate buffers at new size
+            let _ = self.renderer.handle_resize();
+
             self.textbox.set_state(WidgetState::Focused);
             self.textbox.show_cursor();
             self.start_cursor_timer();
