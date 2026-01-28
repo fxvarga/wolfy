@@ -1,18 +1,38 @@
 # Build artifacts
 /target/
+debug/
+*.pdb
 
-# Cargo lock (optional for binaries, but let's keep it)
+# Cargo lock - keep for binary projects (reproducible builds)
 # Cargo.lock
+
+# Rust generated files
+**/*.rs.bk
+*.rlib
+*.rmeta
 
 # Log files
 *.log
 
-# IDE
+# IDE / Editor
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.*.swp
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
+Desktop.ini
+._*
+
+# Environment
+.env
+.env.local
+
+# Backup files
+*.bak
+*.backup
+*.orig
