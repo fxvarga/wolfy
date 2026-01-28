@@ -198,20 +198,22 @@ fn calculate_window_rect(config: &WindowConfig, dpi: u32) -> RECT {
         };
         let _ = GetMonitorInfoW(monitor, &mut monitor_info);
 
-        let work_area = monitor_info.rcWork;
-        let work_width = work_area.right - work_area.left;
-        let work_height = work_area.bottom - work_area.top;
+        // Use full monitor area (rcMonitor) for positioning, not work area (rcWork)
+        // This centers the window on the full screen, ignoring taskbar
+        let monitor_area = monitor_info.rcMonitor;
+        let monitor_width = monitor_area.right - monitor_area.left;
+        let monitor_height = monitor_area.bottom - monitor_area.top;
 
         // Scale dimensions by DPI
         let scaled_width = scale_px(config.width, dpi);
         let scaled_height = scale_px(config.height, dpi);
 
-        // Center horizontally
-        let x = work_area.left + (work_width - scaled_width) / 2;
+        // Center horizontally on full monitor
+        let x = monitor_area.left + (monitor_width - scaled_width) / 2;
 
-        // Position vertically based on config
-        let available_y = work_height - scaled_height;
-        let y = work_area.top + (available_y as f32 * config.vertical_position) as i32;
+        // Position vertically based on config (using full monitor height)
+        let available_y = monitor_height - scaled_height;
+        let y = monitor_area.top + (available_y as f32 * config.vertical_position) as i32;
 
         RECT {
             left: x,

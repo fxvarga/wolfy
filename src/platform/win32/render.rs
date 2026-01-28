@@ -354,7 +354,12 @@ impl Renderer {
 
     /// End drawing and update the layered window
     pub fn end_draw(&self) -> Result<(), Error> {
-        log!("end_draw() called");
+        self.end_draw_with_opacity(1.0)
+    }
+
+    /// End drawing and present to screen with specified opacity (0.0 to 1.0)
+    pub fn end_draw_with_opacity(&self, opacity: f32) -> Result<(), Error> {
+        log!("end_draw_with_opacity({}) called", opacity);
         if let Some(ref target) = self.render_target {
             log!("  Calling target.EndDraw()...");
             unsafe {
@@ -365,7 +370,7 @@ impl Renderer {
 
             // Update the layered window with the offscreen buffer
             if let Some(ref offscreen) = self.offscreen {
-                self.update_layered_window(offscreen)?;
+                self.update_layered_window_with_opacity(offscreen, opacity)?;
             }
         } else {
             log!("  No render target, skipping EndDraw");
@@ -375,9 +380,19 @@ impl Renderer {
 
     /// Update the layered window with per-pixel alpha
     fn update_layered_window(&self, offscreen: &OffscreenBuffer) -> Result<(), Error> {
-        log!("update_layered_window() called");
+        self.update_layered_window_with_opacity(offscreen, 1.0)
+    }
+
+    /// Update the layered window with per-pixel alpha and global opacity
+    fn update_layered_window_with_opacity(
+        &self,
+        offscreen: &OffscreenBuffer,
+        opacity: f32,
+    ) -> Result<(), Error> {
+        log!("update_layered_window_with_opacity({}) called", opacity);
 
         let (width, height) = offscreen.size();
+        let alpha = (opacity.clamp(0.0, 1.0) * 255.0) as u8;
 
         unsafe {
             let pt_src = POINT { x: 0, y: 0 };
@@ -386,11 +401,11 @@ impl Renderer {
                 cy: height,
             };
 
-            // BLENDFUNCTION for per-pixel alpha
+            // BLENDFUNCTION for per-pixel alpha with global opacity
             let blend = windows::Win32::Graphics::Gdi::BLENDFUNCTION {
                 BlendOp: windows::Win32::Graphics::Gdi::AC_SRC_OVER as u8,
                 BlendFlags: 0,
-                SourceConstantAlpha: 255, // Use per-pixel alpha, not constant
+                SourceConstantAlpha: alpha, // Global opacity (255 = fully opaque)
                 AlphaFormat: windows::Win32::Graphics::Gdi::AC_SRC_ALPHA as u8,
             };
 
@@ -409,7 +424,7 @@ impl Renderer {
             if result.is_err() {
                 log!("  UpdateLayeredWindow failed: {:?}", result);
             } else {
-                log!("  UpdateLayeredWindow succeeded");
+                log!("  UpdateLayeredWindow succeeded (alpha={})", alpha);
             }
         }
 
@@ -701,6 +716,101 @@ impl Renderer {
         }
     }
 
+    /// Create a path geometry for a rounded rectangle with a diagonal edge on the right side
+    /// The diagonal goes from (right, top) to (right - diagonal_offset, bottom)
+    /// This creates the slanted wallpaper panel effect like HyDE's rofi style_11
+    fn create_diagonal_rect_path(
+        &self,
+        rect: D2D_RECT_F,
+        radii: CornerRadii,
+        diagonal_offset: f32,
+    ) -> Result<ID2D1PathGeometry, Error> {
+        unsafe {
+            let path = self.factory.CreatePathGeometry()?;
+            let sink = path.Open()?;
+
+            let left = rect.left;
+            let top = rect.top;
+            let right = rect.right;
+            let bottom = rect.bottom;
+
+            // The diagonal edge: top-right corner stays at (right, top)
+            // bottom-right corner is at (right - diagonal_offset, bottom)
+            let bottom_right_x = right - diagonal_offset;
+
+            // Start at top-left, after the top-left corner arc
+            sink.BeginFigure(
+                D2D_POINT_2F {
+                    x: left + radii.top_left,
+                    y: top,
+                },
+                D2D1_FIGURE_BEGIN_FILLED,
+            );
+
+            // Top edge to top-right corner (full width at top)
+            sink.AddLine(D2D_POINT_2F { x: right, y: top });
+
+            // Diagonal edge from top-right down to bottom-right (narrower at bottom)
+            sink.AddLine(D2D_POINT_2F {
+                x: bottom_right_x,
+                y: bottom,
+            });
+
+            // Bottom edge to bottom-left corner
+            sink.AddLine(D2D_POINT_2F {
+                x: left + radii.bottom_left,
+                y: bottom,
+            });
+
+            // Bottom-left corner
+            if radii.bottom_left > 0.0 {
+                sink.AddArc(&D2D1_ARC_SEGMENT {
+                    point: D2D_POINT_2F {
+                        x: left,
+                        y: bottom - radii.bottom_left,
+                    },
+                    size: D2D_SIZE_F {
+                        width: radii.bottom_left,
+                        height: radii.bottom_left,
+                    },
+                    rotationAngle: 0.0,
+                    sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                    arcSize: D2D1_ARC_SIZE_SMALL,
+                });
+            } else {
+                sink.AddLine(D2D_POINT_2F { x: left, y: bottom });
+            }
+
+            // Left edge to top-left corner
+            sink.AddLine(D2D_POINT_2F {
+                x: left,
+                y: top + radii.top_left,
+            });
+
+            // Top-left corner
+            if radii.top_left > 0.0 {
+                sink.AddArc(&D2D1_ARC_SEGMENT {
+                    point: D2D_POINT_2F {
+                        x: left + radii.top_left,
+                        y: top,
+                    },
+                    size: D2D_SIZE_F {
+                        width: radii.top_left,
+                        height: radii.top_left,
+                    },
+                    rotationAngle: 0.0,
+                    sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                    arcSize: D2D1_ARC_SIZE_SMALL,
+                });
+            }
+
+            sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+            sink.Close()?;
+
+            Ok(path)
+        }
+    }
+
     /// Fill a rounded rectangle with per-corner radii
     pub fn fill_rounded_rect_corners(
         &mut self,
@@ -768,6 +878,41 @@ impl Renderer {
         if let Some(ref target) = self.render_target {
             unsafe {
                 let geometry = self.create_rounded_rect_path(rect, radii)?;
+                let layer = target.CreateLayer(None)?;
+
+                let layer_params = D2D1_LAYER_PARAMETERS {
+                    contentBounds: rect,
+                    geometricMask: std::mem::transmute_copy(&geometry),
+                    maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                    maskTransform: windows::Foundation::Numerics::Matrix3x2::identity(),
+                    opacity: 1.0,
+                    opacityBrush: std::mem::ManuallyDrop::new(None),
+                    layerOptions: D2D1_LAYER_OPTIONS_NONE,
+                };
+                target.PushLayer(&layer_params, &layer);
+
+                return Ok(Some(layer));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Push a diagonal clip for the wallpaper panel
+    /// The diagonal goes from (right - diagonal_offset, top) to (right, bottom)
+    pub fn push_diagonal_clip(
+        &mut self,
+        rect: D2D_RECT_F,
+        radii: CornerRadii,
+        diagonal_offset: f32,
+    ) -> Result<Option<ID2D1Layer>, Error> {
+        if diagonal_offset <= 0.0 {
+            // No diagonal, use regular rounded clip
+            return self.push_rounded_clip_corners(rect, radii);
+        }
+
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                let geometry = self.create_diagonal_rect_path(rect, radii, diagonal_offset)?;
                 let layer = target.CreateLayer(None)?;
 
                 let layer_params = D2D1_LAYER_PARAMETERS {

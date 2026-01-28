@@ -8,6 +8,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     KillTimer, SetTimer, WM_DPICHANGED, WM_PAINT, WM_TIMER,
 };
 
+use crate::animation::{Easing, WindowAnimator};
 use crate::log::exe_dir;
 use crate::platform::win32::{
     self, get_wallpaper_path, invalidate_window, reposition_window, translate_message, Event,
@@ -28,6 +29,10 @@ const CURSOR_BLINK_MS: u32 = 530;
 const TIMER_FILE_WATCH: usize = 2;
 /// File watch check interval in milliseconds
 const FILE_WATCH_MS: u32 = 500;
+/// Animation timer ID
+const TIMER_ANIMATION: usize = 3;
+/// Animation frame interval in milliseconds (~60fps)
+const ANIMATION_FRAME_MS: u32 = 16;
 
 /// Child widget layout info
 #[derive(Clone, Debug)]
@@ -61,6 +66,8 @@ pub struct ThemeLayout {
     pub wallpaper_panel_bg: Color,
     /// Wallpaper panel corner radii (per-corner)
     pub wallpaper_panel_radii: CornerRadii,
+    /// Wallpaper panel diagonal edge offset (0 = no diagonal, positive = slant from top-right)
+    pub wallpaper_panel_diagonal: f32,
     /// Listbox background color
     pub listbox_bg: Color,
     /// Listbox corner radii (per-corner)
@@ -72,6 +79,10 @@ pub struct ThemeLayout {
     pub listview_padding_right: f32,
     pub listview_padding_bottom: f32,
     pub listview_padding_left: f32,
+    /// Animation duration in milliseconds (0 = no animation)
+    pub animation_duration_ms: u32,
+    /// Animation easing type (ease-out, ease-in, ease-in-out, linear)
+    pub animation_easing: String,
 }
 
 impl ThemeLayout {
@@ -171,6 +182,7 @@ impl Default for ThemeLayout {
             wallpaper_panel_width: 456.0,
             wallpaper_panel_bg: Color::from_hex("#262335e6").unwrap_or(Color::BLACK),
             wallpaper_panel_radii: CornerRadii::uniform(16.0),
+            wallpaper_panel_diagonal: 0.0, // No diagonal by default
             listbox_bg: Color::from_hex("#262335e6").unwrap_or(Color::BLACK),
             listbox_radii: CornerRadii::uniform(16.0),
             listbox_padding: 0.0,
@@ -178,6 +190,8 @@ impl Default for ThemeLayout {
             listview_padding_right: 32.0,
             listview_padding_bottom: 16.0,
             listview_padding_left: 32.0,
+            animation_duration_ms: 200,
+            animation_easing: "ease-out-expo".to_string(),
         }
     }
 }
@@ -264,6 +278,12 @@ impl ThemeLayout {
                 "wallpaper-panel",
                 default.wallpaper_panel_radii,
             ),
+            wallpaper_panel_diagonal: theme.get_number(
+                "wallpaper-panel",
+                None,
+                "diagonal-edge",
+                default.wallpaper_panel_diagonal as f64,
+            ) as f32,
             listbox_bg: theme.get_color("listbox", None, "background-color", default.listbox_bg),
             listbox_radii: read_corner_radii("listbox", default.listbox_radii),
             listbox_padding: theme.get_number(
@@ -296,6 +316,18 @@ impl ThemeLayout {
                 "padding-left",
                 default.listview_padding_left as f64,
             ) as f32,
+            animation_duration_ms: theme.get_number(
+                "window",
+                None,
+                "animation-duration",
+                default.animation_duration_ms as f64,
+            ) as u32,
+            animation_easing: theme.get_string(
+                "window",
+                None,
+                "animation-easing",
+                &default.animation_easing,
+            ),
         };
 
         // Debug log the loaded theme layout
@@ -305,6 +337,11 @@ impl ThemeLayout {
             layout.window_background_color.g,
             layout.window_background_color.b,
             layout.window_background_color.a
+        );
+        log!(
+            "ThemeLayout::from_theme - animation: {}ms, easing={}",
+            layout.animation_duration_ms,
+            layout.animation_easing
         );
 
         layout
@@ -330,6 +367,8 @@ pub struct App {
     background_bitmap_path: Option<String>,
     /// File watcher for theme hot-reload
     theme_watcher: Option<PollingFileWatcher>,
+    /// Window animator for fade effects
+    animator: WindowAnimator,
 }
 
 impl App {
@@ -425,6 +464,15 @@ impl App {
         log!("  Creating theme file watcher for: {:?}", theme_path);
         let theme_watcher = Some(PollingFileWatcher::new(&theme_path));
 
+        // Create window animator from theme settings
+        let easing = Easing::from_name(&theme_layout.animation_easing);
+        let animator = WindowAnimator::new(theme_layout.animation_duration_ms, easing);
+        log!(
+            "  Created animator: {}ms, easing={:?}",
+            theme_layout.animation_duration_ms,
+            theme_layout.animation_easing
+        );
+
         log!("App::new() completed successfully");
         Ok(Self {
             hwnd,
@@ -439,6 +487,7 @@ impl App {
             background_bitmap: None,
             background_bitmap_path: None,
             theme_watcher,
+            animator,
         })
     }
 
@@ -467,6 +516,20 @@ impl App {
     pub fn stop_cursor_timer(&self) {
         unsafe {
             let _ = KillTimer(self.hwnd, TIMER_CURSOR_BLINK);
+        }
+    }
+
+    /// Start animation timer
+    fn start_animation_timer(&self) {
+        unsafe {
+            SetTimer(self.hwnd, TIMER_ANIMATION, ANIMATION_FRAME_MS, None);
+        }
+    }
+
+    /// Stop animation timer
+    fn stop_animation_timer(&self) {
+        unsafe {
+            let _ = KillTimer(self.hwnd, TIMER_ANIMATION);
         }
     }
 
@@ -528,6 +591,17 @@ impl App {
             }
             WM_TIMER if wparam.0 == TIMER_FILE_WATCH => {
                 self.check_theme_file_changed();
+                return Some(LRESULT(0));
+            }
+            WM_TIMER if wparam.0 == TIMER_ANIMATION => {
+                // Update animation state
+                if self.animator.update() {
+                    // Still animating - request repaint
+                    invalidate_window(self.hwnd);
+                } else {
+                    // Animation complete - stop the timer
+                    self.stop_animation_timer();
+                }
                 return Some(LRESULT(0));
             }
             WM_DPICHANGED => {
@@ -905,8 +979,9 @@ impl App {
         );
 
         log!("  Calling end_draw()...");
-        let result = self.renderer.end_draw();
-        log!("  end_draw() result: {:?}", result);
+        let opacity = self.animator.get_opacity();
+        let result = self.renderer.end_draw_with_opacity(opacity);
+        log!("  end_draw() result: {:?}, opacity: {}", result, opacity);
     }
 
     /// Draw a widget's background based on its name
@@ -918,12 +993,14 @@ impl App {
                 // Extend width to overlap into right panel area (eliminates seam)
                 let overlap = 8.0;
                 let radii = self.theme_layout.wallpaper_panel_radii.scaled(scale);
+                let diagonal = self.theme_layout.wallpaper_panel_diagonal * scale;
                 self.draw_wallpaper_panel_clean(
                     bounds.x,
                     bounds.y,
                     bounds.width + overlap,
                     bounds.height,
                     radii,
+                    diagonal,
                 );
             }
             "listbox" => {
@@ -951,11 +1028,12 @@ impl App {
         width: f32, // Already extended if needed by caller
         height: f32,
         radii: CornerRadii,
+        diagonal: f32, // Diagonal edge offset (0 = no diagonal)
     ) {
         use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 
         log!(
-            "  draw_wallpaper_panel_clean: x={}, y={}, w={}, h={}, radii=({},{},{},{})",
+            "  draw_wallpaper_panel_clean: x={}, y={}, w={}, h={}, radii=({},{},{},{}), diagonal={}",
             x,
             y,
             width,
@@ -964,6 +1042,7 @@ impl App {
             radii.top_right,
             radii.bottom_right,
             radii.bottom_left,
+            diagonal,
         );
 
         let bounds = D2D_RECT_F {
@@ -973,8 +1052,12 @@ impl App {
             bottom: y + height,
         };
 
-        // Push a clip with per-corner radii
-        let _layer = self.renderer.push_rounded_clip_corners(bounds, radii);
+        // Push a clip - use diagonal clip if diagonal > 0, otherwise regular rounded clip
+        let _layer = if diagonal > 0.0 {
+            self.renderer.push_diagonal_clip(bounds, radii, diagonal)
+        } else {
+            self.renderer.push_rounded_clip_corners(bounds, radii)
+        };
 
         // Fallback dark background
         let fallback_bg = Color::from_f32(0.1, 0.1, 0.1, 1.0);
@@ -1172,6 +1255,11 @@ impl App {
             // Initialize listview with all items
             self.listview.set_items(self.all_items.clone());
 
+            // Start fade-in animation
+            self.animator.start_fade_in();
+            self.start_animation_timer();
+            log!("  Started fade-in animation");
+
             // NOTE: Don't call invalidate_window here - it's called by the main loop
             // after we return. This avoids re-entrancy issues since ShowWindow
             // may synchronously send WM_PAINT while we hold the RefCell borrow.
@@ -1179,6 +1267,8 @@ impl App {
         } else {
             log!("  Window now hidden");
             self.stop_cursor_timer();
+            self.stop_animation_timer();
+            self.animator.clear();
         }
         log!("toggle_visibility() completed");
     }

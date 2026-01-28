@@ -10,6 +10,7 @@ extern crate lalrpop_util;
 #[macro_use]
 mod log;
 
+mod animation;
 mod app;
 mod platform;
 mod theme;
@@ -76,7 +77,7 @@ fn main() {
     let config = WindowConfig {
         width: window_width,
         height: window_height,
-        vertical_position: 0.25, // Upper third
+        vertical_position: 0.5, // True center of screen
     };
     log!("Config: {}x{}", config.width, config.height);
 

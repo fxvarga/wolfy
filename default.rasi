@@ -18,6 +18,9 @@ window {
     background-color: #262335cc;  /* Window tint - 80% opacity dark purple */
     border-radius: 16;
     border-color: #f97e72;
+    /* Animation settings */
+    animation-duration: 200;      /* Fade-in duration in milliseconds */
+    animation-easing: ease-out-expo;  /* Options: linear, ease, ease-in, ease-out, ease-in-out, ease-out-cubic, ease-out-quart, ease-out-expo, ease-out-back */
 }
 
 /* Main horizontal container */
@@ -38,6 +41,7 @@ wallpaper-panel {
     border-radius: 16;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
+    diagonal-edge: 150;  /* Slanted edge offset - creates diagonal from (right-150, top) to (right, bottom) */
 }
 
 /* Right panel - search box and results */
