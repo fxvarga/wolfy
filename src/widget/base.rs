@@ -2,6 +2,57 @@
 
 use crate::theme::types::{LayoutContext, Orientation, Rect};
 
+/// Per-corner border radii for rounded rectangles
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CornerRadii {
+    pub top_left: f32,
+    pub top_right: f32,
+    pub bottom_right: f32,
+    pub bottom_left: f32,
+}
+
+impl CornerRadii {
+    /// Create uniform radii (all corners same)
+    pub fn uniform(radius: f32) -> Self {
+        Self {
+            top_left: radius,
+            top_right: radius,
+            bottom_right: radius,
+            bottom_left: radius,
+        }
+    }
+
+    /// Create zero radii (no rounding)
+    pub fn zero() -> Self {
+        Self::default()
+    }
+
+    /// Scale all radii by a factor
+    pub fn scaled(&self, scale: f32) -> Self {
+        Self {
+            top_left: self.top_left * scale,
+            top_right: self.top_right * scale,
+            bottom_right: self.bottom_right * scale,
+            bottom_left: self.bottom_left * scale,
+        }
+    }
+
+    /// Check if all corners are the same (uniform)
+    pub fn is_uniform(&self) -> bool {
+        self.top_left == self.top_right
+            && self.top_right == self.bottom_right
+            && self.bottom_right == self.bottom_left
+    }
+
+    /// Check if all corners are zero (no rounding)
+    pub fn is_zero(&self) -> bool {
+        self.top_left == 0.0
+            && self.top_right == 0.0
+            && self.bottom_right == 0.0
+            && self.bottom_left == 0.0
+    }
+}
+
 /// Size constraint for layout calculations
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Size {

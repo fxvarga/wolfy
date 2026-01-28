@@ -61,6 +61,7 @@ pub struct ElementStyle {
     pub icon_size: f32,
     pub icon_spacing: f32,
     pub height: f32,
+    pub border_radius: f32,
 }
 
 impl Default for ElementStyle {
@@ -80,6 +81,7 @@ impl Default for ElementStyle {
             icon_size: 24.0,
             icon_spacing: 8.0,
             height: 40.0,
+            border_radius: 0.0,
         }
     }
 }
@@ -88,7 +90,7 @@ impl ElementStyle {
     /// Load style from theme
     pub fn from_theme(theme: &ThemeTree, state: Option<&str>) -> Self {
         let default = Self::default();
-        Self {
+        let style = Self {
             background_color: theme.get_color(
                 "element",
                 state,
@@ -150,7 +152,22 @@ impl ElementStyle {
                 default.icon_spacing as f64,
             ) as f32,
             height: theme.get_number("element", state, "height", default.height as f64) as f32,
-        }
+            border_radius: theme.get_number(
+                "element",
+                state,
+                "border-radius",
+                default.border_radius as f64,
+            ) as f32,
+        };
+        crate::log!(
+            "ElementStyle::from_theme - border_radius={}, hover_bg=({},{},{},{})",
+            style.border_radius,
+            style.background_color_hover.r,
+            style.background_color_hover.g,
+            style.background_color_hover.b,
+            style.background_color_hover.a
+        );
+        style
     }
 }
 
@@ -213,6 +230,11 @@ impl Element {
     pub fn height(&self) -> f32 {
         self.style.height
     }
+
+    /// Update style (for hot-reload)
+    pub fn update_style(&mut self, style: ElementStyle) {
+        self.style = style;
+    }
 }
 
 impl Widget for Element {
@@ -243,9 +265,26 @@ impl Widget for Element {
             self.style.background_color
         };
 
-        // Draw background
+        // Draw background (rounded if border_radius > 0)
         if bg_color.a > 0.0 {
-            renderer.fill_rect(bounds, bg_color)?;
+            // Scale border_radius with DPI
+            let scaled_radius = self.style.border_radius * _ctx.scale_factor;
+            log!(
+                "Element::render bg - selected={}, hovered={}, border_radius={} (scaled={}), color=({},{},{},{})",
+                self.selected,
+                self.hovered,
+                self.style.border_radius,
+                scaled_radius,
+                bg_color.r,
+                bg_color.g,
+                bg_color.b,
+                bg_color.a
+            );
+            if scaled_radius > 0.0 {
+                renderer.fill_rounded_rect(bounds, scaled_radius, scaled_radius, bg_color)?;
+            } else {
+                renderer.fill_rect(bounds, bg_color)?;
+            }
         }
 
         // Choose text color
@@ -277,23 +316,12 @@ impl Widget for Element {
             }
         };
 
-        // Draw main text
-        let text_rect = if self.data.subtext.is_some() {
-            // Two-line layout
-            D2D_RECT_F {
-                left: text_x,
-                top: rect.y + self.style.padding_vertical,
-                right: text_x + text_width,
-                bottom: rect.y + rect.height / 2.0 + 4.0,
-            }
-        } else {
-            // Single line centered
-            D2D_RECT_F {
-                left: text_x,
-                top: rect.y,
-                right: text_x + text_width,
-                bottom: rect.y + rect.height,
-            }
+        // Draw main text - always single line centered (no subtext)
+        let text_rect = D2D_RECT_F {
+            left: text_x,
+            top: rect.y,
+            right: text_x + text_width,
+            bottom: rect.y + rect.height,
         };
 
         log!(
@@ -310,31 +338,7 @@ impl Widget for Element {
         );
         renderer.draw_text(&self.data.text, &format, text_rect, text_color)?;
 
-        // Draw subtext if present
-        if let Some(ref subtext) = self.data.subtext {
-            let subtext_format = match renderer.create_text_format(
-                &self.style.font_family,
-                self.style.subtext_font_size,
-                false,
-                false,
-            ) {
-                Ok(f) => f,
-                Err(_) => return Ok(()),
-            };
-
-            let subtext_rect = D2D_RECT_F {
-                left: text_x,
-                top: rect.y + rect.height / 2.0 - 2.0,
-                right: text_x + text_width,
-                bottom: rect.y + rect.height - self.style.padding_vertical,
-            };
-            renderer.draw_text(
-                subtext,
-                &subtext_format,
-                subtext_rect,
-                self.style.subtext_color,
-            )?;
-        }
+        // Subtext disabled - we only show main text now
 
         // TODO: Draw icon when icon loading is implemented
 

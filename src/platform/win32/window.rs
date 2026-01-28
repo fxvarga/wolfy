@@ -34,7 +34,7 @@ impl Default for WindowConfig {
         Self {
             width: 600,
             height: 48,
-            vertical_position: 0.25, // Upper third of screen
+            vertical_position: 0.5, // True center of screen
         }
     }
 }

@@ -114,6 +114,18 @@ impl ThemeTree {
                 for (prop, val) in &node.properties {
                     crate::log!("    {}: {:?}", prop, val);
                 }
+                // Also log states
+                for (state_name, state_props) in &node.states {
+                    crate::log!(
+                        "  Widget '{}.{}': {} properties",
+                        name,
+                        state_name,
+                        state_props.len()
+                    );
+                    for (prop, val) in state_props {
+                        crate::log!("    {}: {:?}", prop, val);
+                    }
+                }
             }
         }
 
@@ -585,5 +597,117 @@ textbox.focused {
 
         let spacing = theme.get_spacing("fixed-widget", Distance::px(0.0));
         assert_eq!(spacing.value, 2.0);
+    }
+
+    #[test]
+    fn test_rgba_color() {
+        let theme = ThemeTree::parse(
+            r#"
+            panel {
+                background-color: rgba(30, 30, 30, 0.80);
+            }
+            
+            overlay {
+                background-color: rgba(255, 0, 128, 0.5);
+            }
+        "#,
+        )
+        .unwrap();
+
+        // Check rgba(30, 30, 30, 0.80)
+        let bg = theme.get_color("panel", None, "background-color", Color::BLACK);
+        assert!(
+            (bg.r - 30.0 / 255.0).abs() < 0.01,
+            "panel r should be ~0.118, got {}",
+            bg.r
+        );
+        assert!(
+            (bg.g - 30.0 / 255.0).abs() < 0.01,
+            "panel g should be ~0.118, got {}",
+            bg.g
+        );
+        assert!(
+            (bg.b - 30.0 / 255.0).abs() < 0.01,
+            "panel b should be ~0.118, got {}",
+            bg.b
+        );
+        // 0.80 * 255 = 204, so alpha = 204/255 = 0.8
+        assert!(
+            (bg.a - 0.8).abs() < 0.01,
+            "panel alpha should be ~0.8, got {}",
+            bg.a
+        );
+
+        // Check rgba(255, 0, 128, 0.5)
+        let overlay = theme.get_color("overlay", None, "background-color", Color::BLACK);
+        assert!(
+            (overlay.r - 1.0).abs() < 0.01,
+            "overlay r should be 1.0, got {}",
+            overlay.r
+        );
+        assert!(overlay.g < 0.01, "overlay g should be 0, got {}", overlay.g);
+        assert!(
+            (overlay.a - 0.5).abs() < 0.02,
+            "overlay alpha should be ~0.5, got {}",
+            overlay.a
+        );
+    }
+
+    #[test]
+    fn test_hex_color_with_alpha() {
+        // Test 8-character hex colors (#RRGGBBAA)
+        let theme = ThemeTree::parse(
+            r#"
+            window {
+                background-color: #262335cc;
+            }
+            
+            panel {
+                background-color: #ff000080;
+            }
+        "#,
+        )
+        .unwrap();
+
+        // Check #262335cc (dark purple, 80% opacity)
+        // #26 = 38, #23 = 35, #35 = 53, #cc = 204
+        let bg = theme.get_color("window", None, "background-color", Color::BLACK);
+        assert!(
+            (bg.r - 38.0 / 255.0).abs() < 0.01,
+            "window r should be ~0.149 (38/255), got {}",
+            bg.r
+        );
+        assert!(
+            (bg.g - 35.0 / 255.0).abs() < 0.01,
+            "window g should be ~0.137 (35/255), got {}",
+            bg.g
+        );
+        assert!(
+            (bg.b - 53.0 / 255.0).abs() < 0.01,
+            "window b should be ~0.208 (53/255), got {}",
+            bg.b
+        );
+        // 0xcc = 204, 204/255 = 0.8
+        assert!(
+            (bg.a - 204.0 / 255.0).abs() < 0.01,
+            "window alpha should be ~0.8 (204/255), got {}",
+            bg.a
+        );
+
+        // Check #ff000080 (red, 50% opacity)
+        let panel = theme.get_color("panel", None, "background-color", Color::BLACK);
+        assert!(
+            (panel.r - 1.0).abs() < 0.01,
+            "panel r should be 1.0, got {}",
+            panel.r
+        );
+        assert!(panel.g < 0.01, "panel g should be 0, got {}", panel.g);
+        assert!(panel.b < 0.01, "panel b should be 0, got {}", panel.b);
+        // 0x80 = 128, 128/255 ≈ 0.502
+        assert!(
+            (panel.a - 128.0 / 255.0).abs() < 0.01,
+            "panel alpha should be ~0.502 (128/255), got {}",
+            panel.a
+        );
     }
 }

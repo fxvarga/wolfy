@@ -172,10 +172,24 @@ impl ListView {
         self
     }
 
+    /// Update ListView style (for hot-reload)
+    pub fn set_style(&mut self, style: ListViewStyle) {
+        self.style = style;
+    }
+
     /// Set the element style
     pub fn with_element_style(mut self, style: ElementStyle) -> Self {
         self.element_style = style;
         self
+    }
+
+    /// Update element style (for hot-reload)
+    pub fn set_element_style(&mut self, style: ElementStyle) {
+        self.element_style = style.clone();
+        // Update existing elements
+        for elem in &mut self.elements {
+            elem.update_style(style.clone());
+        }
     }
 
     /// Set items from element data
@@ -352,7 +366,8 @@ impl ListView {
 
     /// Check if scrollbar should be shown
     fn needs_scrollbar(&self) -> bool {
-        self.elements.len() > self.style.max_visible_items
+        // Scrollbar disabled for cleaner look
+        false
     }
 
     /// Calculate element height including spacing

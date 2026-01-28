@@ -31,7 +31,6 @@ use platform::win32::{
 use app::App;
 use log::exe_dir;
 use theme::tree::ThemeTree;
-use widget::WidgetStyle;
 
 fn main() {
     // Initialize logging first
@@ -49,36 +48,21 @@ fn main() {
     // Load theme to determine window dimensions
     let theme_path = exe_dir().join("default.rasi");
     log!("Loading theme from {:?}", theme_path);
-    let style = match ThemeTree::load(&theme_path) {
+    let (window_width, window_height) = match ThemeTree::load(&theme_path) {
         Ok(theme) => {
             log!("Theme loaded successfully");
-            WidgetStyle::from_theme_textbox(&theme, None)
+            // Read window dimensions from theme
+            let width = theme.get_number("window", None, "width", 928.0) as i32;
+            let height = theme.get_number("window", None, "height", 480.0) as i32;
+            log!("Theme window size: {}x{}", width, height);
+            (width, height)
         }
         Err(e) => {
             log!("Failed to load theme: {:?}, using defaults", e);
-            WidgetStyle::default()
+            (928, 480)
         }
     };
-
-    // Calculate window height based on font size + padding + border + listview
-    // Textbox: font_size + padding_top + padding_bottom + border*2
-    // ListView: element_height * max_visible_items + padding
-    let textbox_height = style.font_size
-        + style.padding_top
-        + style.padding_bottom
-        + style.border_width * 2.0
-        + 16.0; // Extra margin
-
-    // Listview: 10 items * 40px height + padding
-    let listview_height = 10.0 * 42.0 + 16.0; // 10 items with spacing + padding
-
-    let window_height = (textbox_height + listview_height + 24.0) as i32; // 24px for spacing
-    log!(
-        "Calculated window height: {} (textbox={}, listview={})",
-        window_height,
-        textbox_height,
-        listview_height
-    );
+    log!("Window size: {}x{}", window_width, window_height);
 
     // Register window class
     log!("Registering window class...");
@@ -88,10 +72,9 @@ fn main() {
     }
     log!("Window class registered");
 
-    // Create window configuration
-    // Split panel: 300px wallpaper + ~500px listbox = ~800px total
+    // Create window configuration from theme dimensions
     let config = WindowConfig {
-        width: 850,
+        width: window_width,
         height: window_height,
         vertical_position: 0.25, // Upper third
     };
@@ -154,7 +137,11 @@ fn main() {
         }
     });
 
-    log!("Wolfy started. Entering message loop. Press Alt+Space to toggle.");
+    // Start file watch timer for theme hot-reload
+    log!("Starting file watch timer for theme hot-reload...");
+    app.borrow().start_file_watch_timer();
+
+    log!("Wolfy started. Entering message loop. Press Alt+Space to toggle, F5 to reload theme.");
 
     // Run message loop with hotkey handling
     unsafe {

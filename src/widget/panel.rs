@@ -10,7 +10,7 @@ use crate::platform::Event;
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageScale, ImageSource, LayoutContext, Rect};
 
-use super::base::{Constraints, LayoutProps, MeasuredSize};
+use super::base::{Constraints, CornerRadii, LayoutProps, MeasuredSize};
 use super::{EventResult, Widget, WidgetState, WidgetStyle};
 
 /// A panel that displays a background color or image
@@ -42,7 +42,8 @@ pub struct PanelStyle {
     pub background_image: Option<ImageSource>,
     pub border_color: Color,
     pub border_width: f32,
-    pub border_radius: f32,
+    /// Per-corner border radii
+    pub border_radii: CornerRadii,
 }
 
 impl Default for PanelStyle {
@@ -52,7 +53,7 @@ impl Default for PanelStyle {
             background_image: None,
             border_color: Color::TRANSPARENT,
             border_width: 0.0,
-            border_radius: 0.0,
+            border_radii: CornerRadii::zero(),
         }
     }
 }
@@ -61,6 +62,28 @@ impl PanelStyle {
     /// Load style from theme for a named widget
     pub fn from_theme(theme: &ThemeTree, name: &str, state: Option<&str>) -> Self {
         let default = Self::default();
+
+        // Read per-corner border radii
+        let base_radius = theme.get_number(name, state, "border-radius", 0.0) as f32;
+        let border_radii = CornerRadii {
+            top_left: theme.get_number(name, state, "border-top-left-radius", base_radius as f64)
+                as f32,
+            top_right: theme.get_number(name, state, "border-top-right-radius", base_radius as f64)
+                as f32,
+            bottom_right: theme.get_number(
+                name,
+                state,
+                "border-bottom-right-radius",
+                base_radius as f64,
+            ) as f32,
+            bottom_left: theme.get_number(
+                name,
+                state,
+                "border-bottom-left-radius",
+                base_radius as f64,
+            ) as f32,
+        };
+
         Self {
             background_color: theme.get_color(
                 name,
@@ -72,12 +95,7 @@ impl PanelStyle {
             border_color: theme.get_color(name, state, "border-color", default.border_color),
             border_width: theme.get_number(name, state, "border-width", default.border_width as f64)
                 as f32,
-            border_radius: theme.get_number(
-                name,
-                state,
-                "border-radius",
-                default.border_radius as f64,
-            ) as f32,
+            border_radii,
         }
     }
 }
@@ -289,25 +307,34 @@ impl Widget for Panel {
             bottom: rect.y + rect.height,
         };
 
+        let radii = self.style.border_radii;
+
         // Draw background image if present
         if self.style.background_image.is_some() {
+            // If we have rounded corners, clip the image
+            let _layer = if !radii.is_zero() {
+                renderer.push_rounded_clip_corners(bounds, radii)?
+            } else {
+                None
+            };
+
             if let Some(bitmap) =
                 self.ensure_bitmap(renderer, rect.width as u32, rect.height as u32)
             {
                 // Draw the bitmap covering the entire panel
                 renderer.draw_bitmap_cover(&bitmap, bounds, 1.0)?;
             }
+
+            // Pop the clip layer if we pushed one
+            if _layer.is_some() {
+                renderer.pop_layer();
+            }
         }
 
         // Draw background color (can overlay on top of image for tinting)
         if self.style.background_color.a > 0.0 {
-            if self.style.border_radius > 0.0 {
-                renderer.fill_rounded_rect(
-                    bounds,
-                    self.style.border_radius,
-                    self.style.border_radius,
-                    self.style.background_color,
-                )?;
+            if !radii.is_zero() {
+                renderer.fill_rounded_rect_corners(bounds, radii, self.style.background_color)?;
             } else {
                 renderer.fill_rect(bounds, self.style.background_color)?;
             }
@@ -315,11 +342,10 @@ impl Widget for Panel {
 
         // Draw border if present
         if self.style.border_width > 0.0 && self.style.border_color.a > 0.0 {
-            if self.style.border_radius > 0.0 {
-                renderer.draw_rounded_rect(
+            if !radii.is_zero() {
+                renderer.draw_rounded_rect_corners(
                     bounds,
-                    self.style.border_radius,
-                    self.style.border_radius,
+                    radii,
                     self.style.border_color,
                     self.style.border_width,
                 )?;

@@ -2,6 +2,7 @@
 
 pub mod dpi;
 pub mod event;
+pub mod filewatcher;
 pub mod hotkey;
 pub mod image;
 pub mod render;
@@ -10,6 +11,7 @@ pub mod window;
 
 pub use dpi::*;
 pub use event::{post_quit, run_message_loop, translate_message, Event, KeyCode, Modifiers};
+pub use filewatcher::PollingFileWatcher;
 pub use hotkey::{is_toggle_hotkey, register_hotkey, unregister_hotkey, HOTKEY_ID_TOGGLE};
 pub use image::{ImageLoader, LoadedImage};
 pub use render::Renderer;

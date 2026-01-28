@@ -1,13 +1,23 @@
-/* Wolfy Default Theme - HyDE Style Split Panel */
+/* Wolfy Default Theme - HyDE Style 11 (DiagonalSplit) */
 
+/* Color scheme - matches HyDE theme.rasi */
 * {
-    text-color: #d4d4d4;
+    main-bg: #262335e6;
+    main-fg: #ff7edbff;
+    main-br: #f97e72ff;
+    main-ex: #72f1b8ff;
+    select-bg: #03edf9ff;
+    select-fg: #495495ff;
+    text-color: #ff7edb;
 }
 
-/* Main window - no background, children handle their own */
+/* Main window */
 window {
-    background-color: transparent;
-    border-radius: 12;
+    width: 928;
+    height: 480;
+    background-color: #262335cc;  /* Window tint - 80% opacity dark purple */
+    border-radius: 16;
+    border-color: #f97e72;
 }
 
 /* Main horizontal container */
@@ -15,16 +25,17 @@ mainbox {
     orientation: horizontal;
     children: [ "wallpaper-panel", "listbox" ];
     spacing: 0;
-    background-color: transparent;
+    padding: 12;
+    background-color: transparent;  /* Let window tint show through */
 }
 
-/* Left panel - wallpaper display */
+/* Left panel - wallpaper display (inputbar in HyDE) */
 wallpaper-panel {
-    background-image: url("auto", height);
-    background-color: rgba(0, 0, 0, 60);
-    expand: true;
-    width: 300;
-    border-radius: 12;
+    background-image: url("auto", width);
+    background-color: transparent;  /* No overlay on wallpaper */
+    expand: false;
+    width: 456;
+    border-radius: 16;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
@@ -32,15 +43,15 @@ wallpaper-panel {
 /* Right panel - search box and results */
 listbox {
     orientation: vertical;
-    children: [ "inputbar", "listview" ];
-    spacing: 8;
+    children: [ "dummy", "listview", "dummy" ];
+    spacing: 0;
     expand: true;
-    background-color: rgba(30, 30, 30, 230);
-    padding-top: 12;
-    padding-right: 12;
-    padding-bottom: 12;
-    padding-left: 12;
-    border-radius: 12;
+    background-color: #262335e6;  /* 90% opacity - nearly opaque */
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+    border-radius: 16;
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
 }
@@ -53,63 +64,72 @@ inputbar {
     background-color: transparent;
 }
 
-/* Search textbox */
+/* Search textbox (entry in HyDE) */
 textbox {
-    background-color: rgba(50, 50, 50, 255);
-    text-color: #ffffff;
-    border-width: 1;
-    border-color: #3c3c3c;
-    border-radius: 8;
-    padding-top: 12;
+    background-color: transparent;  /* Let window tint show through */
+    text-color: #ff7edb;
+    border-width: 0;
+    border-color: transparent;
+    border-radius: 48;
+    padding-top: 16;
     padding-right: 16;
-    padding-bottom: 12;
+    padding-bottom: 16;
     padding-left: 16;
-    font-size: 20;
-    placeholder-color: #808080;
-    cursor-color: #ffffff;
-    selection-color: #264f78;
+    font-size: 16;
+    font-family: "JetBrainsMono Nerd Font";
+    placeholder-color: #ff7edb80;
+    cursor-color: #ff7edb;
+    selection-color: #03edf9;
 }
 
 textbox.focused {
-    border-color: #007acc;
+    border-color: #f97e72;
 }
 
 /* ListView - scrollable list of results */
 listview {
     background-color: transparent;
+    text-color: #ff7edb;
     border-width: 0;
     border-radius: 0;
-    padding-top: 0;
-    padding-right: 0;
-    padding-bottom: 0;
-    padding-left: 0;
-    spacing: 2;
-    lines: 10;
-    scrollbar-width: 6;
-    scrollbar-color: #606060;
-    scrollbar-track-color: #303030;
+    padding-top: 16;
+    padding-right: 32;
+    padding-bottom: 16;
+    padding-left: 32;
+    spacing: 0;
+    lines: 8;
+    scrollbar-width: 0;
+    scrollbar-color: #ff7edb40;
+    scrollbar-track-color: transparent;
 }
 
 /* Element - individual list item */
 element {
     background-color: transparent;
-    text-color: #d4d4d4;
-    subtext-color: #808080;
+    text-color: #ff7edb;
+    subtext-color: #ff7edb80;
     font-size: 14;
+    font-family: "JetBrainsMono Nerd Font";
     subtext-font-size: 11;
-    padding-horizontal: 12;
+    padding-horizontal: 24;
     padding-vertical: 8;
-    icon-size: 24;
-    icon-spacing: 8;
-    height: 40;
-    border-radius: 6;
+    icon-size: 35;
+    icon-spacing: 16;
+    height: 48;
+    border-radius: 8;
 }
 
 element.selected {
-    background-color: #264f78;
-    text-color: #ffffff;
+    background-color: #03edf9;
+    text-color: #495495;
 }
 
 element.hover {
-    background-color: #3c3c3c;
+    background-color: #ff7edb20;
+}
+
+/* Dummy spacer */
+dummy {
+    background-color: transparent;
+    expand: true;
 }

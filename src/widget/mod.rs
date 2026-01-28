@@ -1,10 +1,16 @@
 //! Widget system for Wolfy
 //!
 //! Widgets are UI components that can be rendered and handle events.
+//!
+//! The widget system follows rofi's pattern:
+//! - Widget names/prefixes determine widget type (container, panel, textbox, etc.)
+//! - Theme's `children` property defines the widget tree structure
+//! - Known containers have default children if not specified in theme
 
 pub mod base;
 pub mod container;
 pub mod element;
+pub mod factory;
 pub mod listview;
 pub mod panel;
 pub mod textbox;
@@ -14,9 +20,10 @@ use crate::platform::Event;
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageSource, LayoutContext, Rect};
 
-pub use base::{ArrangedBounds, Constraints, LayoutProps, MeasuredSize, Size};
+pub use base::{ArrangedBounds, Constraints, CornerRadii, LayoutProps, MeasuredSize, Size};
 pub use container::{Container, ContainerStyle};
 pub use element::{Element, ElementData, ElementStyle};
+pub use factory::{UITree, WidgetFactory, WidgetNode, WidgetType};
 pub use listview::{ListView, ListViewStyle};
 pub use panel::{Panel, PanelStyle};
 pub use textbox::Textbox;

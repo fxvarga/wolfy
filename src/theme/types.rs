@@ -396,6 +396,16 @@ impl Rect {
         }
     }
 
+    /// Create a zero-sized rect at origin
+    pub fn zero() -> Self {
+        Self {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        }
+    }
+
     /// Shrink rect by padding amounts
     pub fn inset(&self, padding: &ResolvedPadding) -> Self {
         Self {

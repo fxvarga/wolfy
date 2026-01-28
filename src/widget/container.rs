@@ -5,7 +5,7 @@ use crate::platform::Event;
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, LayoutContext, Orientation, Rect};
 
-use super::base::{ArrangedBounds, Constraints, LayoutProps, MeasuredSize, Size};
+use super::base::{ArrangedBounds, Constraints, CornerRadii, LayoutProps, MeasuredSize, Size};
 use super::{EventResult, Widget, WidgetState, WidgetStyle};
 
 /// A container that arranges children horizontally or vertically
@@ -30,7 +30,8 @@ pub struct ContainerStyle {
     pub background_color: Color,
     pub border_color: Color,
     pub border_width: f32,
-    pub border_radius: f32,
+    /// Per-corner border radii
+    pub border_radii: CornerRadii,
 }
 
 impl Default for ContainerStyle {
@@ -39,7 +40,7 @@ impl Default for ContainerStyle {
             background_color: Color::TRANSPARENT,
             border_color: Color::TRANSPARENT,
             border_width: 0.0,
-            border_radius: 0.0,
+            border_radii: CornerRadii::zero(),
         }
     }
 }
@@ -48,6 +49,28 @@ impl ContainerStyle {
     /// Load style from theme for a named widget
     pub fn from_theme(theme: &ThemeTree, name: &str, state: Option<&str>) -> Self {
         let default = Self::default();
+
+        // Read per-corner border radii
+        let base_radius = theme.get_number(name, state, "border-radius", 0.0) as f32;
+        let border_radii = CornerRadii {
+            top_left: theme.get_number(name, state, "border-top-left-radius", base_radius as f64)
+                as f32,
+            top_right: theme.get_number(name, state, "border-top-right-radius", base_radius as f64)
+                as f32,
+            bottom_right: theme.get_number(
+                name,
+                state,
+                "border-bottom-right-radius",
+                base_radius as f64,
+            ) as f32,
+            bottom_left: theme.get_number(
+                name,
+                state,
+                "border-bottom-left-radius",
+                base_radius as f64,
+            ) as f32,
+        };
+
         Self {
             background_color: theme.get_color(
                 name,
@@ -58,12 +81,7 @@ impl ContainerStyle {
             border_color: theme.get_color(name, state, "border-color", default.border_color),
             border_width: theme.get_number(name, state, "border-width", default.border_width as f64)
                 as f32,
-            border_radius: theme.get_number(
-                name,
-                state,
-                "border-radius",
-                default.border_radius as f64,
-            ) as f32,
+            border_radii,
         }
     }
 }
@@ -381,15 +399,12 @@ impl Widget for Container {
             bottom: rect.y + rect.height,
         };
 
+        let radii = self.style.border_radii;
+
         // Draw background if not transparent
         if self.style.background_color.a > 0.0 {
-            if self.style.border_radius > 0.0 {
-                renderer.fill_rounded_rect(
-                    bounds,
-                    self.style.border_radius,
-                    self.style.border_radius,
-                    self.style.background_color,
-                )?;
+            if !radii.is_zero() {
+                renderer.fill_rounded_rect_corners(bounds, radii, self.style.background_color)?;
             } else {
                 renderer.fill_rect(bounds, self.style.background_color)?;
             }
@@ -397,11 +412,10 @@ impl Widget for Container {
 
         // Draw border if present
         if self.style.border_width > 0.0 && self.style.border_color.a > 0.0 {
-            if self.style.border_radius > 0.0 {
-                renderer.draw_rounded_rect(
+            if !radii.is_zero() {
+                renderer.draw_rounded_rect_corners(
                     bounds,
-                    self.style.border_radius,
-                    self.style.border_radius,
+                    radii,
                     self.style.border_color,
                     self.style.border_width,
                 )?;

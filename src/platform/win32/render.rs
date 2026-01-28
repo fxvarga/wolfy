@@ -18,6 +18,7 @@ use super::dpi::DpiInfo;
 use super::image::LoadedImage;
 use super::window::get_client_size;
 use crate::theme::types::Color;
+use crate::widget::CornerRadii;
 
 /// A cached brush key
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -500,6 +501,290 @@ impl Renderer {
             }
         }
         Ok(())
+    }
+
+    /// Push an axis-aligned clip rectangle
+    pub fn push_clip_rect(&mut self, rect: D2D_RECT_F) {
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                target.PushAxisAlignedClip(&rect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            }
+        }
+    }
+
+    /// Pop the current clip
+    pub fn pop_clip(&mut self) {
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                target.PopAxisAlignedClip();
+            }
+        }
+    }
+
+    /// Push a rounded rectangle clip using a geometry layer
+    /// Returns a layer that must be popped with pop_layer()
+    pub fn push_rounded_clip(
+        &mut self,
+        rect: D2D_RECT_F,
+        radius_x: f32,
+        radius_y: f32,
+    ) -> Result<Option<ID2D1Layer>, Error> {
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                // Create a rounded rectangle geometry
+                let rounded = D2D1_ROUNDED_RECT {
+                    rect,
+                    radiusX: radius_x,
+                    radiusY: radius_y,
+                };
+                let geometry = self.factory.CreateRoundedRectangleGeometry(&rounded)?;
+
+                // Create a layer
+                let layer = target.CreateLayer(None)?;
+
+                // Push the layer with the geometry as a mask
+                let layer_params = D2D1_LAYER_PARAMETERS {
+                    contentBounds: rect,
+                    geometricMask: std::mem::transmute_copy(&geometry),
+                    maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                    maskTransform: windows::Foundation::Numerics::Matrix3x2::identity(),
+                    opacity: 1.0,
+                    opacityBrush: std::mem::ManuallyDrop::new(None),
+                    layerOptions: D2D1_LAYER_OPTIONS_NONE,
+                };
+                target.PushLayer(&layer_params, &layer);
+
+                return Ok(Some(layer));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Pop a layer pushed with push_rounded_clip()
+    pub fn pop_layer(&mut self) {
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                target.PopLayer();
+            }
+        }
+    }
+
+    /// Create a path geometry for a rounded rectangle with per-corner radii
+    fn create_rounded_rect_path(
+        &self,
+        rect: D2D_RECT_F,
+        radii: CornerRadii,
+    ) -> Result<ID2D1PathGeometry, Error> {
+        unsafe {
+            let path = self.factory.CreatePathGeometry()?;
+            let sink = path.Open()?;
+
+            let left = rect.left;
+            let top = rect.top;
+            let right = rect.right;
+            let bottom = rect.bottom;
+
+            // Start at top-left, after the top-left corner arc
+            sink.BeginFigure(
+                D2D_POINT_2F {
+                    x: left + radii.top_left,
+                    y: top,
+                },
+                D2D1_FIGURE_BEGIN_FILLED,
+            );
+
+            // Top edge to top-right corner
+            sink.AddLine(D2D_POINT_2F {
+                x: right - radii.top_right,
+                y: top,
+            });
+
+            // Top-right corner
+            if radii.top_right > 0.0 {
+                sink.AddArc(&D2D1_ARC_SEGMENT {
+                    point: D2D_POINT_2F {
+                        x: right,
+                        y: top + radii.top_right,
+                    },
+                    size: D2D_SIZE_F {
+                        width: radii.top_right,
+                        height: radii.top_right,
+                    },
+                    rotationAngle: 0.0,
+                    sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                    arcSize: D2D1_ARC_SIZE_SMALL,
+                });
+            } else {
+                sink.AddLine(D2D_POINT_2F { x: right, y: top });
+            }
+
+            // Right edge to bottom-right corner
+            sink.AddLine(D2D_POINT_2F {
+                x: right,
+                y: bottom - radii.bottom_right,
+            });
+
+            // Bottom-right corner
+            if radii.bottom_right > 0.0 {
+                sink.AddArc(&D2D1_ARC_SEGMENT {
+                    point: D2D_POINT_2F {
+                        x: right - radii.bottom_right,
+                        y: bottom,
+                    },
+                    size: D2D_SIZE_F {
+                        width: radii.bottom_right,
+                        height: radii.bottom_right,
+                    },
+                    rotationAngle: 0.0,
+                    sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                    arcSize: D2D1_ARC_SIZE_SMALL,
+                });
+            } else {
+                sink.AddLine(D2D_POINT_2F {
+                    x: right,
+                    y: bottom,
+                });
+            }
+
+            // Bottom edge to bottom-left corner
+            sink.AddLine(D2D_POINT_2F {
+                x: left + radii.bottom_left,
+                y: bottom,
+            });
+
+            // Bottom-left corner
+            if radii.bottom_left > 0.0 {
+                sink.AddArc(&D2D1_ARC_SEGMENT {
+                    point: D2D_POINT_2F {
+                        x: left,
+                        y: bottom - radii.bottom_left,
+                    },
+                    size: D2D_SIZE_F {
+                        width: radii.bottom_left,
+                        height: radii.bottom_left,
+                    },
+                    rotationAngle: 0.0,
+                    sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                    arcSize: D2D1_ARC_SIZE_SMALL,
+                });
+            } else {
+                sink.AddLine(D2D_POINT_2F { x: left, y: bottom });
+            }
+
+            // Left edge to top-left corner
+            sink.AddLine(D2D_POINT_2F {
+                x: left,
+                y: top + radii.top_left,
+            });
+
+            // Top-left corner
+            if radii.top_left > 0.0 {
+                sink.AddArc(&D2D1_ARC_SEGMENT {
+                    point: D2D_POINT_2F {
+                        x: left + radii.top_left,
+                        y: top,
+                    },
+                    size: D2D_SIZE_F {
+                        width: radii.top_left,
+                        height: radii.top_left,
+                    },
+                    rotationAngle: 0.0,
+                    sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                    arcSize: D2D1_ARC_SIZE_SMALL,
+                });
+            }
+
+            sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+            sink.Close()?;
+
+            Ok(path)
+        }
+    }
+
+    /// Fill a rounded rectangle with per-corner radii
+    pub fn fill_rounded_rect_corners(
+        &mut self,
+        rect: D2D_RECT_F,
+        radii: CornerRadii,
+        color: Color,
+    ) -> Result<(), Error> {
+        // If all corners are the same, use the simpler method
+        if radii.is_uniform() {
+            return self.fill_rounded_rect(rect, radii.top_left, radii.top_left, color);
+        }
+
+        let brush = self.get_brush(color)?;
+        let path = self.create_rounded_rect_path(rect, radii)?;
+
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                target.FillGeometry(&path, &brush, None);
+            }
+        }
+        Ok(())
+    }
+
+    /// Draw (stroke) a rounded rectangle border with per-corner radii
+    pub fn draw_rounded_rect_corners(
+        &mut self,
+        rect: D2D_RECT_F,
+        radii: CornerRadii,
+        color: Color,
+        stroke_width: f32,
+    ) -> Result<(), Error> {
+        // If all corners are the same, use the simpler method
+        if radii.is_uniform() {
+            return self.draw_rounded_rect(
+                rect,
+                radii.top_left,
+                radii.top_left,
+                color,
+                stroke_width,
+            );
+        }
+
+        let brush = self.get_brush(color)?;
+        let path = self.create_rounded_rect_path(rect, radii)?;
+
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                target.DrawGeometry(&path, &brush, stroke_width, None);
+            }
+        }
+        Ok(())
+    }
+
+    /// Push a rounded rectangle clip with per-corner radii using a geometry layer
+    pub fn push_rounded_clip_corners(
+        &mut self,
+        rect: D2D_RECT_F,
+        radii: CornerRadii,
+    ) -> Result<Option<ID2D1Layer>, Error> {
+        // If all corners are the same, use the simpler method
+        if radii.is_uniform() {
+            return self.push_rounded_clip(rect, radii.top_left, radii.top_left);
+        }
+
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                let geometry = self.create_rounded_rect_path(rect, radii)?;
+                let layer = target.CreateLayer(None)?;
+
+                let layer_params = D2D1_LAYER_PARAMETERS {
+                    contentBounds: rect,
+                    geometricMask: std::mem::transmute_copy(&geometry),
+                    maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                    maskTransform: windows::Foundation::Numerics::Matrix3x2::identity(),
+                    opacity: 1.0,
+                    opacityBrush: std::mem::ManuallyDrop::new(None),
+                    layerOptions: D2D1_LAYER_OPTIONS_NONE,
+                };
+                target.PushLayer(&layer_params, &layer);
+
+                return Ok(Some(layer));
+            }
+        }
+        Ok(None)
     }
 
     /// Draw a line
