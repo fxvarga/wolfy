@@ -16,6 +16,9 @@ pub mod theme;
 // Animation system (no Windows dependencies)
 pub mod animation;
 
+// Usage history tracking (no Windows dependencies)
+pub mod history;
+
 // Widget base types (no Windows dependencies)
 pub mod widget {
     pub mod base;

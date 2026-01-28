@@ -249,7 +249,13 @@ impl ListView {
 
     /// Select next item
     pub fn select_next(&mut self) {
+        crate::log!(
+            "select_next() called, elements.len={}, selected_index={:?}",
+            self.elements.len(),
+            self.selected_index
+        );
         if self.elements.is_empty() {
+            crate::log!("  elements is empty, returning");
             return;
         }
 
@@ -258,6 +264,7 @@ impl ListView {
             None => 0,
         };
 
+        crate::log!("  new_index={}", new_index);
         self.selected_index = Some(new_index);
         self.update_selection_state();
         self.ensure_selected_visible();
@@ -265,7 +272,13 @@ impl ListView {
 
     /// Select previous item
     pub fn select_previous(&mut self) {
+        crate::log!(
+            "select_previous() called, elements.len={}, selected_index={:?}",
+            self.elements.len(),
+            self.selected_index
+        );
         if self.elements.is_empty() {
+            crate::log!("  elements is empty, returning");
             return;
         }
 
@@ -393,8 +406,11 @@ impl Widget for ListView {
     fn handle_event(&mut self, event: &Event, _ctx: &LayoutContext) -> EventResult {
         use crate::platform::win32::event::KeyCode;
 
+        crate::log!("ListView::handle_event called with {:?}", event);
+
         match event {
             Event::KeyDown { key, .. } => {
+                crate::log!("  KeyDown key={:?}", key);
                 match *key {
                     // Down arrow
                     KeyCode::Down => {

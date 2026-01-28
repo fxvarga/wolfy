@@ -305,6 +305,13 @@ impl ThemeTree {
     pub fn get_spacing(&self, widget: &str, default: Distance) -> Distance {
         self.get_distance(widget, None, "spacing", default)
     }
+
+    /// Get the hotkey configuration from the window section
+    /// Format: "alt+<key>" where <key> is a-z, 0-9, or "space"
+    /// Returns the default hotkey if not specified or invalid
+    pub fn get_hotkey_string(&self, default: &str) -> String {
+        self.get_string("window", None, "hotkey", default)
+    }
 }
 
 #[cfg(test)]

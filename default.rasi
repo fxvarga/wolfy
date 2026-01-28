@@ -18,6 +18,9 @@ window {
     background-color: #262335cc;  /* Window tint - 80% opacity dark purple */
     border-radius: 16;
     border-color: #f97e72;
+    /* Hotkey to toggle window (default: alt+space) */
+    /* Options: ctrl+space, alt+space, ctrl+a through ctrl+z, alt+a through alt+z, ctrl+0 through ctrl+9, alt+0 through alt+9 */
+    hotkey: "ctrl+space";
     /* Animation settings */
     animation-duration: 200;      /* Fade-in duration in milliseconds */
     animation-easing: ease-out-expo;  /* Options: linear, ease, ease-in, ease-out, ease-in-out, ease-out-cubic, ease-out-quart, ease-out-expo, ease-out-back */

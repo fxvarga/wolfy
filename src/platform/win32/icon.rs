@@ -80,6 +80,13 @@ impl IconLoader {
     ) -> Result<CachedIcon, Error> {
         log!("IconLoader::load_icon('{}')", path);
 
+        // Skip problematic file types that can cause crashes
+        let path_lower = path.to_lowercase();
+        if path_lower.ends_with(".url") {
+            log!("  Skipping icon for .url file (known to cause crashes)");
+            return Err(Error::from_win32());
+        }
+
         // Convert path to wide string
         let path_wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
 
@@ -135,6 +142,19 @@ impl IconLoader {
             // The icon has a color bitmap (hbmColor) and a mask bitmap (hbmMask)
             let hbm_color = icon_info.hbmColor;
             let hbm_mask = icon_info.hbmMask;
+
+            log!("  hbmColor={:?}, hbmMask={:?}", hbm_color, hbm_mask);
+
+            // Check if we have a valid color bitmap
+            // Note: is_invalid() checks for null/0, but some icons may have
+            // a non-null but still problematic bitmap handle
+            if hbm_color.is_invalid() || hbm_color.0 == std::ptr::null_mut() {
+                log!("  hbmColor is invalid, cannot extract icon pixels");
+                if !hbm_mask.is_invalid() {
+                    let _ = DeleteObject(hbm_mask);
+                }
+                return Err(Error::from_win32());
+            }
 
             // Create a memory DC
             let hdc = CreateCompatibleDC(HDC::default());

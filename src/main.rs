@@ -1,6 +1,6 @@
 //! Wolfy - A Windows application launcher inspired by rofi
 //!
-//! Press Alt+Space to toggle the launcher window.
+//! Press the configured hotkey (default: Alt+Space) to toggle the launcher window.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -12,6 +12,7 @@ mod log;
 
 mod animation;
 mod app;
+mod history;
 mod platform;
 mod theme;
 mod widget;
@@ -24,9 +25,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use platform::win32::{
-    self, create_window, enable_dpi_awareness, register_hotkey, register_window_class,
-    set_window_callback, unregister_hotkey, unregister_window_class, WindowConfig,
-    HOTKEY_ID_TOGGLE,
+    self, create_window, enable_dpi_awareness, parse_hotkey_string, register_window_class,
+    set_window_callback, unregister_window_class, HotkeyConfig, WindowConfig,
+    DEFAULT_TOGGLE_HOTKEY, HOTKEY_ID_TOGGLE,
 };
 
 use app::App;
@@ -46,21 +47,31 @@ fn main() {
         log!("DPI awareness enabled");
     }
 
-    // Load theme to determine window dimensions
+    // Load theme to determine window dimensions and hotkey
     let theme_path = exe_dir().join("default.rasi");
     log!("Loading theme from {:?}", theme_path);
-    let (window_width, window_height) = match ThemeTree::load(&theme_path) {
+    let (window_width, window_height, hotkey_config) = match ThemeTree::load(&theme_path) {
         Ok(theme) => {
             log!("Theme loaded successfully");
             // Read window dimensions from theme
             let width = theme.get_number("window", None, "width", 928.0) as i32;
             let height = theme.get_number("window", None, "height", 480.0) as i32;
             log!("Theme window size: {}x{}", width, height);
-            (width, height)
+
+            // Read hotkey configuration from theme
+            let hotkey_str = theme.get_hotkey_string("alt+space");
+            log!("Theme hotkey string: {}", hotkey_str);
+            let hotkey = parse_hotkey_string(&hotkey_str).unwrap_or_else(|| {
+                log!("Invalid hotkey '{}', using default Alt+Space", hotkey_str);
+                DEFAULT_TOGGLE_HOTKEY
+            });
+            log!("Using hotkey: {}", hotkey.display_name());
+
+            (width, height, hotkey)
         }
         Err(e) => {
             log!("Failed to load theme: {:?}, using defaults", e);
-            (928, 480)
+            (928, 480, DEFAULT_TOGGLE_HOTKEY)
         }
     };
     log!("Window size: {}x{}", window_width, window_height);
@@ -95,15 +106,15 @@ fn main() {
         }
     };
 
-    // Register global hotkey (Alt+Space)
-    log!("Registering hotkey (Alt+Space)...");
-    if let Err(e) = register_hotkey(hwnd) {
+    // Register global hotkey (from theme or default Alt+Space)
+    log!("Registering hotkey ({})...", hotkey_config.display_name());
+    if let Err(e) = hotkey_config.register(hwnd) {
         log!("FATAL: Failed to register hotkey: {:?}", e);
         win32::destroy_window(hwnd);
         unregister_window_class();
         return;
     }
-    log!("Hotkey registered");
+    log!("Hotkey registered: {}", hotkey_config.display_name());
 
     // Create application
     log!("Creating App...");
@@ -114,7 +125,7 @@ fn main() {
         }
         Err(e) => {
             log!("FATAL: Failed to create App: {:?}", e);
-            unregister_hotkey(hwnd);
+            hotkey_config.unregister(hwnd);
             win32::destroy_window(hwnd);
             unregister_window_class();
             return;
@@ -142,7 +153,10 @@ fn main() {
     log!("Starting file watch timer for theme hot-reload...");
     app.borrow().start_file_watch_timer();
 
-    log!("Wolfy started. Entering message loop. Press Alt+Space to toggle, F5 to reload theme.");
+    log!(
+        "Wolfy started. Entering message loop. Press {} to toggle, F5 to reload theme.",
+        hotkey_config.display_name()
+    );
 
     // Run message loop with hotkey handling
     unsafe {
@@ -179,7 +193,7 @@ fn main() {
     // Cleanup
     log!("Cleaning up...");
     win32::clear_window_callback();
-    unregister_hotkey(hwnd);
+    hotkey_config.unregister(hwnd);
     unregister_window_class();
 
     log!("Wolfy exited normally.");

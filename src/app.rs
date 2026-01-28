@@ -9,10 +9,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::animation::{Easing, WindowAnimator};
+use crate::history::History;
 use crate::log::exe_dir;
 use crate::platform::win32::{
-    self, get_wallpaper_path, invalidate_window, reposition_window, translate_message, Event,
-    ImageLoader, PollingFileWatcher, Renderer, WindowConfig,
+    self, discover_all_apps, get_wallpaper_path, invalidate_window, reposition_window,
+    translate_message, Event, ImageLoader, PollingFileWatcher, Renderer, WindowConfig,
 };
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageScale, LayoutContext, Rect};
@@ -33,6 +34,78 @@ const FILE_WATCH_MS: u32 = 500;
 const TIMER_ANIMATION: usize = 3;
 /// Animation frame interval in milliseconds (~60fps)
 const ANIMATION_FRAME_MS: u32 = 16;
+
+/// Fuzzy match a query against a target string
+/// Returns Some(score) if matched, None if not matched
+/// Higher scores indicate better matches
+fn fuzzy_match(target: &str, query: &str) -> Option<i32> {
+    if query.is_empty() {
+        return Some(0);
+    }
+
+    let target_chars: Vec<char> = target.chars().collect();
+    let query_chars: Vec<char> = query.chars().collect();
+
+    // Check if all query chars appear in order in target
+    let mut target_idx = 0;
+    let mut query_idx = 0;
+    let mut score = 0i32;
+    let mut consecutive = 0;
+    let mut last_match_idx: Option<usize> = None;
+
+    while query_idx < query_chars.len() && target_idx < target_chars.len() {
+        if target_chars[target_idx] == query_chars[query_idx] {
+            // Matched a character
+
+            // Bonus for consecutive matches
+            if let Some(last) = last_match_idx {
+                if target_idx == last + 1 {
+                    consecutive += 1;
+                    score += consecutive * 5; // Growing bonus for consecutive
+                } else {
+                    consecutive = 0;
+                }
+            }
+
+            // Bonus for matching at start
+            if target_idx == 0 {
+                score += 15;
+            }
+
+            // Bonus for matching after separator (space, -, _, etc)
+            if target_idx > 0 {
+                let prev = target_chars[target_idx - 1];
+                if prev == ' ' || prev == '-' || prev == '_' || prev == '.' {
+                    score += 10;
+                }
+            }
+
+            // Bonus for matching uppercase in camelCase
+            if target_chars[target_idx].is_uppercase() {
+                score += 5;
+            }
+
+            last_match_idx = Some(target_idx);
+            query_idx += 1;
+            score += 1; // Base score for each match
+        }
+        target_idx += 1;
+    }
+
+    // All query chars must be found
+    if query_idx == query_chars.len() {
+        // Bonus for shorter targets (more precise match)
+        score += (100 - target_chars.len().min(100) as i32);
+
+        // Bonus if query matches a significant portion of target
+        let coverage = (query_chars.len() * 100) / target_chars.len().max(1);
+        score += coverage as i32 / 2;
+
+        Some(score)
+    } else {
+        None
+    }
+}
 
 /// Child widget layout info
 #[derive(Clone, Debug)]
@@ -366,6 +439,8 @@ pub struct App {
     listview: ListView,
     /// All available items (unfiltered)
     all_items: Vec<ElementData>,
+    /// Usage history for sorting
+    history: History,
     layout_ctx: LayoutContext,
     style: WidgetStyle,
     /// Theme-derived layout settings
@@ -378,6 +453,8 @@ pub struct App {
     theme_watcher: Option<PollingFileWatcher>,
     /// Window animator for fade effects
     animator: WindowAnimator,
+    /// Track if window is visible (to avoid double-hide issues)
+    is_visible: bool,
 }
 
 impl App {
@@ -453,46 +530,31 @@ impl App {
             .map(|t| ThemeLayout::from_theme(t))
             .unwrap_or_default();
 
-        // Sample items for development - will be replaced with app discovery
-        // Use full paths for icon extraction
-        let all_items = vec![
-            ElementData::new("Calculator", "calc.exe")
-                .with_subtext("Windows Calculator")
-                .with_icon("C:\\Windows\\System32\\calc.exe"),
-            ElementData::new("Notepad", "notepad.exe")
-                .with_subtext("Text Editor")
-                .with_icon("C:\\Windows\\System32\\notepad.exe"),
-            ElementData::new("Paint", "mspaint.exe")
-                .with_subtext("Image Editor")
-                .with_icon("C:\\Windows\\System32\\mspaint.exe"),
-            ElementData::new("Command Prompt", "cmd.exe")
-                .with_subtext("Windows Terminal")
-                .with_icon("C:\\Windows\\System32\\cmd.exe"),
-            ElementData::new("PowerShell", "powershell.exe")
-                .with_subtext("Windows PowerShell")
-                .with_icon("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"),
-            ElementData::new("File Explorer", "explorer.exe")
-                .with_subtext("File Manager")
-                .with_icon("C:\\Windows\\explorer.exe"),
-            ElementData::new("Task Manager", "taskmgr.exe")
-                .with_subtext("System Monitor")
-                .with_icon("C:\\Windows\\System32\\Taskmgr.exe"),
-            ElementData::new("Control Panel", "control.exe")
-                .with_subtext("System Settings")
-                .with_icon("C:\\Windows\\System32\\control.exe"),
-            ElementData::new("Registry Editor", "regedit.exe")
-                .with_subtext("Windows Registry")
-                .with_icon("C:\\Windows\\regedit.exe"),
-            ElementData::new("Device Manager", "devmgmt.msc")
-                .with_subtext("Hardware Manager")
-                .with_icon("C:\\Windows\\System32\\devmgmt.msc"),
-            ElementData::new("Disk Management", "diskmgmt.msc")
-                .with_subtext("Disk Utility")
-                .with_icon("C:\\Windows\\System32\\diskmgmt.msc"),
-            ElementData::new("Services", "services.msc")
-                .with_subtext("Windows Services")
-                .with_icon("C:\\Windows\\System32\\services.msc"),
-        ];
+        // Load usage history
+        log!("  Loading usage history...");
+        let history = History::load_default();
+
+        // Discover installed applications
+        log!("  Discovering installed applications...");
+        let discovered_apps = discover_all_apps(Some(&history));
+        log!("  Discovered {} applications", discovered_apps.len());
+
+        // Convert AppEntry to ElementData
+        // user_data = launch_target (what to execute)
+        // We use launch_target for both launching and history tracking
+        let all_items: Vec<ElementData> = discovered_apps
+            .into_iter()
+            .map(|app| {
+                let mut elem = ElementData::new(&app.name, &app.launch_target);
+                if !app.description.is_empty() {
+                    elem = elem.with_subtext(&app.description);
+                }
+                if !app.icon_source.is_empty() {
+                    elem = elem.with_icon(&app.icon_source);
+                }
+                elem
+            })
+            .collect();
 
         // Create theme file watcher for hot-reload
         log!("  Creating theme file watcher for: {:?}", theme_path);
@@ -515,6 +577,7 @@ impl App {
             textbox,
             listview,
             all_items,
+            history,
             layout_ctx,
             style,
             theme_layout,
@@ -522,6 +585,7 @@ impl App {
             background_bitmap_path: None,
             theme_watcher,
             animator,
+            is_visible: false,
         })
     }
 
@@ -586,8 +650,10 @@ impl App {
             log!("  Translated to event: {:?}", event);
             let result = self.handle_event(&event);
             log!(
-                "  Result: consumed={}, submit={}, cancel={}",
+                "  Result: consumed={}, needs_repaint={}, text_changed={}, submit={}, cancel={}",
                 result.consumed,
+                result.needs_repaint,
+                result.text_changed,
                 result.submit,
                 result.cancel
             );
@@ -657,15 +723,21 @@ impl App {
         use crate::platform::win32::event::KeyCode;
 
         // Handle focus lost - hide the launcher when clicking outside
+        // Only process if window is currently visible (avoid double-hide)
         if matches!(event, Event::FocusLost) {
-            log!("Focus lost - hiding launcher");
-            return EventResult {
-                needs_repaint: false,
-                consumed: true,
-                text_changed: false,
-                submit: false,
-                cancel: true, // This will trigger on_cancel() which hides the window
-            };
+            if self.is_visible {
+                log!("Focus lost while visible - hiding launcher");
+                return EventResult {
+                    needs_repaint: false,
+                    consumed: true,
+                    text_changed: false,
+                    submit: false,
+                    cancel: true, // This will trigger on_cancel() which hides the window
+                };
+            } else {
+                log!("Focus lost while hidden - ignoring");
+                return EventResult::none();
+            }
         }
 
         // Check for navigation keys that should go to listview
@@ -733,6 +805,9 @@ impl App {
             // Try to launch the application
             if let Err(e) = self.launch_app(&command) {
                 log!("Failed to launch {}: {:?}", command, e);
+            } else {
+                // Record successful launch in history
+                self.history.record_launch(&command);
             }
         }
 
@@ -769,36 +844,57 @@ impl App {
 
     /// Handle cancel (Escape pressed)
     fn on_cancel(&mut self) {
+        // Avoid double-cancel if already hidden
+        if !self.is_visible {
+            log!("on_cancel() called but window already hidden - ignoring");
+            return;
+        }
         log!("on_cancel() called - hiding window");
+        self.is_visible = false;
         self.textbox.clear();
         win32::hide_window(self.hwnd);
         self.stop_cursor_timer();
         log!("on_cancel() completed");
     }
 
-    /// Handle text changes - filter the list
+    /// Handle text changes - filter the list with fuzzy matching
     fn on_text_changed(&mut self) {
         let query = self.textbox.text().to_lowercase();
+        log!("on_text_changed() called, query='{}'", query);
 
         if query.is_empty() {
             // Show all items when no search query
             self.listview.set_items(self.all_items.clone());
         } else {
-            // Filter items by name (case-insensitive)
-            let filtered: Vec<ElementData> = self
+            // Filter and score items using fuzzy matching
+            let mut scored: Vec<(i32, ElementData)> = self
                 .all_items
                 .iter()
-                .filter(|item| {
-                    item.text.to_lowercase().contains(&query)
-                        || item
-                            .subtext
-                            .as_ref()
-                            .map(|s| s.to_lowercase().contains(&query))
-                            .unwrap_or(false)
+                .filter_map(|item| {
+                    let text_lower = item.text.to_lowercase();
+                    let subtext_lower = item.subtext.as_ref().map(|s| s.to_lowercase());
+
+                    // Try fuzzy match on text
+                    if let Some(score) = fuzzy_match(&text_lower, &query) {
+                        return Some((score, item.clone()));
+                    }
+
+                    // Try fuzzy match on subtext
+                    if let Some(subtext) = &subtext_lower {
+                        if let Some(score) = fuzzy_match(subtext, &query) {
+                            // Subtext matches get lower priority
+                            return Some((score - 100, item.clone()));
+                        }
+                    }
+
+                    None
                 })
-                .cloned()
                 .collect();
 
+            // Sort by score (higher is better)
+            scored.sort_by(|a, b| b.0.cmp(&a.0));
+
+            let filtered: Vec<ElementData> = scored.into_iter().map(|(_, item)| item).collect();
             self.listview.set_items(filtered);
         }
     }
@@ -1310,20 +1406,38 @@ impl App {
 
     /// Toggle window visibility (called from hotkey)
     pub fn toggle_visibility(&mut self) {
-        log!("toggle_visibility() called");
+        log!("toggle_visibility() called, is_visible={}", self.is_visible);
 
-        log!("  Calling win32::toggle_window()...");
-        let visible = win32::toggle_window(self.hwnd);
-        log!("  toggle_window() returned visible={}", visible);
+        // Toggle based on our tracked state, not IsWindowVisible
+        // (IsWindowVisible can lag behind due to animation/async hide)
+        if self.is_visible {
+            // Hide the window
+            log!("  Hiding window...");
+            self.is_visible = false;
+            self.textbox.clear();
+            win32::hide_window(self.hwnd);
+            self.stop_cursor_timer();
+            self.stop_animation_timer();
+            self.animator.clear();
+            log!("  Window hidden");
+        } else {
+            // Show the window
+            log!("  Showing window...");
+            self.is_visible = true;
 
-        if visible {
-            log!("  Window now visible, setting up...");
+            // Actually show the window
+            win32::show_window(self.hwnd);
 
             // Reposition window with correct DPI scaling before showing content
             win32::reposition_window(self.hwnd, &self.config);
 
             // Force renderer to recreate buffers at new size
             let _ = self.renderer.handle_resize();
+
+            // Clear cached bitmap - it was created on the old render target
+            // and will cause D2D errors if used on the new one
+            self.background_bitmap = None;
+            self.background_bitmap_path = None;
 
             self.textbox.set_state(WidgetState::Focused);
             self.textbox.show_cursor();
@@ -1344,12 +1458,7 @@ impl App {
             // This ensures we have rendered content before the animation timer starts
             // updating just the opacity
             self.paint();
-            log!("  Initial paint complete");
-        } else {
-            log!("  Window now hidden");
-            self.stop_cursor_timer();
-            self.stop_animation_timer();
-            self.animator.clear();
+            log!("  Window shown, initial paint complete");
         }
         log!("toggle_visibility() completed");
     }
