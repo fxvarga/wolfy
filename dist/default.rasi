@@ -1,0 +1,140 @@
+/* Wolfy Default Theme - HyDE Style 11 (DiagonalSplit) */
+
+/* Color scheme - matches HyDE theme.rasi */
+* {
+    main-bg: #262335e6;
+    main-fg: #ff7edbff;
+    main-br: #f97e72ff;
+    main-ex: #72f1b8ff;
+    select-bg: #03edf9ff;
+    select-fg: #495495ff;
+    text-color: #ff7edb;
+}
+
+/* Main window */
+window {
+    width: 928;
+    height: 480;
+    background-color: #2623352c;  /* Window tint - 80% opacity dark purple */
+    border-radius: 16;
+    border-color: #f97e72;
+    /* Animation settings */
+    animation-duration: 200;      /* Fade-in duration in milliseconds */
+    animation-easing: ease-out-expo;  /* Options: linear, ease, ease-in, ease-out, ease-in-out, ease-out-cubic, ease-out-quart, ease-out-expo, ease-out-back */
+}
+
+/* Main horizontal container */
+mainbox {
+    orientation: horizontal;
+    children: [ "wallpaper-panel", "listbox" ];
+    spacing: 0;
+    padding: 42;
+    background-color: transparent;  /* Let window tint show through */
+}
+
+/* Left panel - wallpaper display (inputbar in HyDE) */
+wallpaper-panel {
+    background-image: url("auto", width);
+    background-color: transparent;  /* No overlay on wallpaper */
+    expand: false;
+    width: 406;
+    border-radius: 16;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    diagonal-edge: 60;  /* Slanted edge offset - creates diagonal from (right, top) to (right-150, bottom) */
+    fade-width: 60;      /* Width of the feathered fade along the diagonal edge */
+}
+
+/* Right panel - search box and results */
+listbox {
+    orientation: vertical;
+    children: [ "dummy", "listview", "dummy" ];
+    spacing: 0;
+    expand: true;
+    background-color: #262335e6;  /* 90% opacity - nearly opaque */
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+    border-radius: 16;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+/* Input bar container */
+inputbar {
+    orientation: horizontal;
+    children: [ "textbox" ];
+    spacing: 0;
+    background-color: transparent;
+}
+
+/* Search textbox (entry in HyDE) */
+textbox {
+    background-color: transparent;  /* Let window tint show through */
+    text-color: #ff7edb;
+    border-width: 0;
+    border-color: transparent;
+    border-radius: 48;
+    padding-top: 16;
+    padding-right: 16;
+    padding-bottom: 16;
+    padding-left: 16;
+    font-size: 16;
+    font-family: "JetBrainsMono Nerd Font";
+    placeholder-color: #ff7edb80;
+    cursor-color: #ff7edb;
+    selection-color: #03edf9;
+}
+
+textbox.focused {
+    border-color: #f97e72;
+}
+
+/* ListView - scrollable list of results */
+listview {
+    background-color: transparent;
+    text-color: #ff7edb;
+    border-width: 0;
+    border-radius: 0;
+    padding-top: 20;
+    padding-right: 32;
+    padding-bottom: 16;
+    padding-left: 12;
+    spacing: 0;
+    lines: 8;
+    scrollbar-width: 0;
+    scrollbar-color: #ff7edb40;
+    scrollbar-track-color: transparent;
+}
+
+/* Element - individual list item */
+element {
+    background-color: transparent;
+    text-color: #ff7edb;
+    subtext-color: #ff7edb80;
+    font-size: 12;
+    font-family: "JetBrainsMono Nerd Font";
+    subtext-font-size: 11;
+    padding-horizontal: 24;
+    padding-vertical: 8;
+    icon-size: 25;
+    icon-spacing: 16;
+    height: 40;
+    border-radius: 8;
+}
+
+element.selected {
+    background-color: #03edf9;
+    text-color: #495495;
+}
+
+element.hover {
+    background-color: #ff7edb20;
+}
+
+/* Dummy spacer */
+dummy {
+    background-color: transparent;
+    expand: true;
+}
