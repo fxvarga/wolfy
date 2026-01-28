@@ -13,11 +13,14 @@
 
 /* Main window */
 window {
-    width: 928;
-    height: 480;
+    width: 1200;
+    height: 600;
     background-color: #2623352c;  /* Window tint - 80% opacity dark purple */
     border-radius: 16;
     border-color: #f97e72;
+    /* Hotkey to toggle window (default: alt+space) */
+    /* Options: ctrl+space, alt+space, ctrl+a through ctrl+z, alt+a through alt+z, ctrl+0 through ctrl+9, alt+0 through alt+9 */
+    hotkey: "ctrl+0";
     /* Animation settings */
     animation-duration: 200;      /* Fade-in duration in milliseconds */
     animation-easing: ease-out-expo;  /* Options: linear, ease, ease-in, ease-out, ease-in-out, ease-out-cubic, ease-out-quart, ease-out-expo, ease-out-back */
@@ -28,7 +31,7 @@ mainbox {
     orientation: horizontal;
     children: [ "wallpaper-panel", "listbox" ];
     spacing: 0;
-    padding: 42;
+    padding: 30;
     background-color: transparent;  /* Let window tint show through */
 }
 
@@ -37,7 +40,7 @@ wallpaper-panel {
     background-image: url("auto", width);
     background-color: transparent;  /* No overlay on wallpaper */
     expand: false;
-    width: 406;
+    width: 600;
     border-radius: 16;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
@@ -50,7 +53,7 @@ listbox {
     orientation: vertical;
     children: [ "dummy", "listview", "dummy" ];
     spacing: 0;
-    expand: true;
+    expand: false;
     background-color: #262335e6;  /* 90% opacity - nearly opaque */
     padding-top: 0;
     padding-right: 0;
@@ -98,11 +101,11 @@ listview {
     border-width: 0;
     border-radius: 0;
     padding-top: 20;
-    padding-right: 32;
+    padding-right: 10;
     padding-bottom: 16;
     padding-left: 12;
-    spacing: 0;
-    lines: 8;
+    spacing: 20;
+    lines: 7;
     scrollbar-width: 0;
     scrollbar-color: #ff7edb40;
     scrollbar-track-color: transparent;
@@ -113,14 +116,14 @@ element {
     background-color: transparent;
     text-color: #ff7edb;
     subtext-color: #ff7edb80;
-    font-size: 12;
+    font-size: 18;
     font-family: "JetBrainsMono Nerd Font";
     subtext-font-size: 11;
     padding-horizontal: 24;
     padding-vertical: 8;
     icon-size: 25;
     icon-spacing: 16;
-    height: 40;
+    height: 50;
     border-radius: 8;
 }
 
