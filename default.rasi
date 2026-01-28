@@ -41,7 +41,8 @@ wallpaper-panel {
     border-radius: 16;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
-    diagonal-edge: 150;  /* Slanted edge offset - creates diagonal from (right-150, top) to (right, bottom) */
+    diagonal-edge: 150;  /* Slanted edge offset - creates diagonal from (right, top) to (right-150, bottom) */
+    fade-width: 80;      /* Width of the feathered fade along the diagonal edge */
 }
 
 /* Right panel - search box and results */

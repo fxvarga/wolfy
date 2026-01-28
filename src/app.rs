@@ -68,6 +68,8 @@ pub struct ThemeLayout {
     pub wallpaper_panel_radii: CornerRadii,
     /// Wallpaper panel diagonal edge offset (0 = no diagonal, positive = slant from top-right)
     pub wallpaper_panel_diagonal: f32,
+    /// Wallpaper panel fade width (how wide the feathered edge is along the diagonal)
+    pub wallpaper_panel_fade_width: f32,
     /// Listbox background color
     pub listbox_bg: Color,
     /// Listbox corner radii (per-corner)
@@ -182,7 +184,8 @@ impl Default for ThemeLayout {
             wallpaper_panel_width: 456.0,
             wallpaper_panel_bg: Color::from_hex("#262335e6").unwrap_or(Color::BLACK),
             wallpaper_panel_radii: CornerRadii::uniform(16.0),
-            wallpaper_panel_diagonal: 0.0, // No diagonal by default
+            wallpaper_panel_diagonal: 0.0,     // No diagonal by default
+            wallpaper_panel_fade_width: 100.0, // Fade gradient width along diagonal edge
             listbox_bg: Color::from_hex("#262335e6").unwrap_or(Color::BLACK),
             listbox_radii: CornerRadii::uniform(16.0),
             listbox_padding: 0.0,
@@ -283,6 +286,12 @@ impl ThemeLayout {
                 None,
                 "diagonal-edge",
                 default.wallpaper_panel_diagonal as f64,
+            ) as f32,
+            wallpaper_panel_fade_width: theme.get_number(
+                "wallpaper-panel",
+                None,
+                "fade-width",
+                default.wallpaper_panel_fade_width as f64,
             ) as f32,
             listbox_bg: theme.get_color("listbox", None, "background-color", default.listbox_bg),
             listbox_radii: read_corner_radii("listbox", default.listbox_radii),
@@ -445,19 +454,44 @@ impl App {
             .unwrap_or_default();
 
         // Sample items for development - will be replaced with app discovery
+        // Use full paths for icon extraction
         let all_items = vec![
-            ElementData::new("Calculator", "calc.exe").with_subtext("Windows Calculator"),
-            ElementData::new("Notepad", "notepad.exe").with_subtext("Text Editor"),
-            ElementData::new("Paint", "mspaint.exe").with_subtext("Image Editor"),
-            ElementData::new("Command Prompt", "cmd.exe").with_subtext("Windows Terminal"),
-            ElementData::new("PowerShell", "powershell.exe").with_subtext("Windows PowerShell"),
-            ElementData::new("File Explorer", "explorer.exe").with_subtext("File Manager"),
-            ElementData::new("Task Manager", "taskmgr.exe").with_subtext("System Monitor"),
-            ElementData::new("Control Panel", "control.exe").with_subtext("System Settings"),
-            ElementData::new("Registry Editor", "regedit.exe").with_subtext("Windows Registry"),
-            ElementData::new("Device Manager", "devmgmt.msc").with_subtext("Hardware Manager"),
-            ElementData::new("Disk Management", "diskmgmt.msc").with_subtext("Disk Utility"),
-            ElementData::new("Services", "services.msc").with_subtext("Windows Services"),
+            ElementData::new("Calculator", "calc.exe")
+                .with_subtext("Windows Calculator")
+                .with_icon("C:\\Windows\\System32\\calc.exe"),
+            ElementData::new("Notepad", "notepad.exe")
+                .with_subtext("Text Editor")
+                .with_icon("C:\\Windows\\System32\\notepad.exe"),
+            ElementData::new("Paint", "mspaint.exe")
+                .with_subtext("Image Editor")
+                .with_icon("C:\\Windows\\System32\\mspaint.exe"),
+            ElementData::new("Command Prompt", "cmd.exe")
+                .with_subtext("Windows Terminal")
+                .with_icon("C:\\Windows\\System32\\cmd.exe"),
+            ElementData::new("PowerShell", "powershell.exe")
+                .with_subtext("Windows PowerShell")
+                .with_icon("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"),
+            ElementData::new("File Explorer", "explorer.exe")
+                .with_subtext("File Manager")
+                .with_icon("C:\\Windows\\explorer.exe"),
+            ElementData::new("Task Manager", "taskmgr.exe")
+                .with_subtext("System Monitor")
+                .with_icon("C:\\Windows\\System32\\Taskmgr.exe"),
+            ElementData::new("Control Panel", "control.exe")
+                .with_subtext("System Settings")
+                .with_icon("C:\\Windows\\System32\\control.exe"),
+            ElementData::new("Registry Editor", "regedit.exe")
+                .with_subtext("Windows Registry")
+                .with_icon("C:\\Windows\\regedit.exe"),
+            ElementData::new("Device Manager", "devmgmt.msc")
+                .with_subtext("Hardware Manager")
+                .with_icon("C:\\Windows\\System32\\devmgmt.msc"),
+            ElementData::new("Disk Management", "diskmgmt.msc")
+                .with_subtext("Disk Utility")
+                .with_icon("C:\\Windows\\System32\\diskmgmt.msc"),
+            ElementData::new("Services", "services.msc")
+                .with_subtext("Windows Services")
+                .with_icon("C:\\Windows\\System32\\services.msc"),
         ];
 
         // Create theme file watcher for hot-reload
@@ -559,6 +593,8 @@ impl App {
             );
 
             if result.needs_repaint {
+                // Mark renderer as dirty since content changed
+                self.renderer.mark_dirty();
                 invalidate_window(self.hwnd);
             }
 
@@ -596,8 +632,9 @@ impl App {
             WM_TIMER if wparam.0 == TIMER_ANIMATION => {
                 // Update animation state
                 if self.animator.update() {
-                    // Still animating - request repaint
-                    invalidate_window(self.hwnd);
+                    // Still animating - just update opacity without re-rendering content
+                    let opacity = self.animator.get_opacity();
+                    let _ = self.renderer.update_opacity_only(opacity);
                 } else {
                     // Animation complete - stop the timer
                     self.stop_animation_timer();
@@ -820,6 +857,9 @@ impl App {
         self.background_bitmap_path = None;
         log!("  Invalidated background bitmap cache");
 
+        // Mark renderer as dirty
+        self.renderer.mark_dirty();
+
         // Force repaint
         invalidate_window(self.hwnd);
         log!("reload_theme() completed");
@@ -1005,10 +1045,13 @@ impl App {
             }
             "listbox" => {
                 let radii = self.theme_layout.listbox_radii.scaled(scale);
+                let diagonal = self.theme_layout.wallpaper_panel_diagonal * scale;
+                // Extend the listbox to the LEFT to fill the diagonal gap
+                // The listbox needs to go underneath the wallpaper panel's diagonal edge
                 self.draw_right_panel(
-                    bounds.x,
+                    bounds.x - diagonal, // Extend left by the diagonal amount
                     bounds.y,
-                    bounds.width,
+                    bounds.width + diagonal, // Add the diagonal to width to compensate
                     bounds.height,
                     self.theme_layout.listbox_bg,
                     radii,
@@ -1072,6 +1115,33 @@ impl App {
             width,
             height,
         );
+
+        // Draw the fade gradient overlay along the diagonal edge
+        // This creates a smooth feathered transition from wallpaper to listbox background
+        let scale = self.layout_ctx.scale_factor;
+        let fade_width = self.theme_layout.wallpaper_panel_fade_width * scale;
+
+        if fade_width > 0.0 && diagonal > 0.0 {
+            let fade_bounds = D2D_RECT_F {
+                left: x,
+                top: y,
+                right: x + width,
+                bottom: y + height,
+            };
+
+            // Use a semi-transparent version of the listbox color for a softer shadow effect
+            // This creates a gentle vignette rather than a hard transition
+            let fade_color = Color::from_f32(
+                self.theme_layout.listbox_bg.r,
+                self.theme_layout.listbox_bg.g,
+                self.theme_layout.listbox_bg.b,
+                self.theme_layout.listbox_bg.a * 0.7, // Reduce opacity for softer effect
+            );
+
+            let _ = self
+                .renderer
+                .fill_diagonal_fade(fade_bounds, fade_width, diagonal, fade_color);
+        }
 
         // Pop the clip layer
         self.renderer.pop_layer();
@@ -1255,15 +1325,19 @@ impl App {
             // Initialize listview with all items
             self.listview.set_items(self.all_items.clone());
 
+            // Mark renderer as dirty to force a full render on first frame
+            self.renderer.mark_dirty();
+
             // Start fade-in animation
             self.animator.start_fade_in();
             self.start_animation_timer();
             log!("  Started fade-in animation");
 
-            // NOTE: Don't call invalidate_window here - it's called by the main loop
-            // after we return. This avoids re-entrancy issues since ShowWindow
-            // may synchronously send WM_PAINT while we hold the RefCell borrow.
-            log!("  Setup complete (repaint will be triggered by caller)");
+            // Force an immediate paint to render content at animation start opacity
+            // This ensures we have rendered content before the animation timer starts
+            // updating just the opacity
+            self.paint();
+            log!("  Initial paint complete");
         } else {
             log!("  Window now hidden");
             self.stop_cursor_timer();

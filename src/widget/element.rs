@@ -338,9 +338,22 @@ impl Widget for Element {
         );
         renderer.draw_text(&self.data.text, &format, text_rect, text_color)?;
 
-        // Subtext disabled - we only show main text now
+        // Draw icon if we have an icon path
+        if let Some(ref icon_path) = self.data.icon_path {
+            // Calculate icon position - vertically centered in the element
+            let icon_size = self.style.icon_size;
+            let icon_x = rect.x + self.style.padding_horizontal;
+            let icon_y = rect.y + (rect.height - icon_size) / 2.0;
 
-        // TODO: Draw icon when icon loading is implemented
+            let icon_rect = D2D_RECT_F {
+                left: icon_x,
+                top: icon_y,
+                right: icon_x + icon_size,
+                bottom: icon_y + icon_size,
+            };
+
+            renderer.draw_icon(icon_path, icon_rect, 1.0);
+        }
 
         Ok(())
     }

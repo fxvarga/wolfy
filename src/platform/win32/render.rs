@@ -15,6 +15,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::WindowsAndMessaging::{UpdateLayeredWindow, ULW_ALPHA};
 
 use super::dpi::DpiInfo;
+use super::icon::IconLoader;
 use super::image::LoadedImage;
 use super::window::get_client_size;
 use crate::theme::types::Color;
@@ -136,6 +137,10 @@ pub struct Renderer {
     brush_cache: HashMap<BrushKey, ID2D1SolidColorBrush>,
     hwnd: HWND,
     dpi: DpiInfo,
+    /// Icon loader and cache
+    icon_loader: IconLoader,
+    /// Whether content needs to be re-rendered (false = just update opacity)
+    content_dirty: bool,
 }
 
 impl Renderer {
@@ -164,6 +169,8 @@ impl Renderer {
             brush_cache: HashMap::new(),
             hwnd,
             dpi,
+            icon_loader: IconLoader::new(),
+            content_dirty: true,
         };
 
         log!("Renderer::new() completed (render_target=None, will create lazily)");
@@ -250,6 +257,7 @@ impl Renderer {
                 self.render_target = None;
                 self.offscreen = None;
                 self.brush_cache.clear();
+                self.icon_loader.clear_cache();
             }
         }
 
@@ -271,6 +279,8 @@ impl Renderer {
         self.render_target = None;
         self.offscreen = None;
         self.brush_cache.clear();
+        self.icon_loader.clear_cache();
+        self.content_dirty = true;
         Ok(())
     }
 
@@ -280,7 +290,19 @@ impl Renderer {
         self.render_target = None;
         self.offscreen = None;
         self.brush_cache.clear();
+        self.icon_loader.clear_cache();
+        self.content_dirty = true;
         Ok(())
+    }
+
+    /// Mark content as dirty (needs re-render)
+    pub fn mark_dirty(&mut self) {
+        self.content_dirty = true;
+    }
+
+    /// Check if content is dirty
+    pub fn is_dirty(&self) -> bool {
+        self.content_dirty
     }
 
     /// Get or create a solid color brush
@@ -353,12 +375,12 @@ impl Renderer {
     }
 
     /// End drawing and update the layered window
-    pub fn end_draw(&self) -> Result<(), Error> {
+    pub fn end_draw(&mut self) -> Result<(), Error> {
         self.end_draw_with_opacity(1.0)
     }
 
     /// End drawing and present to screen with specified opacity (0.0 to 1.0)
-    pub fn end_draw_with_opacity(&self, opacity: f32) -> Result<(), Error> {
+    pub fn end_draw_with_opacity(&mut self, opacity: f32) -> Result<(), Error> {
         log!("end_draw_with_opacity({}) called", opacity);
         if let Some(ref target) = self.render_target {
             log!("  Calling target.EndDraw()...");
@@ -368,12 +390,25 @@ impl Renderer {
                 result?;
             }
 
+            // Mark content as clean since we just rendered
+            self.content_dirty = false;
+
             // Update the layered window with the offscreen buffer
             if let Some(ref offscreen) = self.offscreen {
                 self.update_layered_window_with_opacity(offscreen, opacity)?;
             }
         } else {
             log!("  No render target, skipping EndDraw");
+        }
+        Ok(())
+    }
+
+    /// Update only the window opacity without re-rendering content
+    /// This is used during animations to avoid flickering
+    pub fn update_opacity_only(&self, opacity: f32) -> Result<(), Error> {
+        log!("update_opacity_only({}) called", opacity);
+        if let Some(ref offscreen) = self.offscreen {
+            self.update_layered_window_with_opacity(offscreen, opacity)?;
         }
         Ok(())
     }
@@ -957,6 +992,115 @@ impl Renderer {
         Ok(())
     }
 
+    /// Fill a diagonal fade overlay that follows the wallpaper panel's diagonal edge
+    /// This creates a smooth feathered transition from wallpaper to the listbox background
+    ///
+    /// Parameters:
+    /// - bounds: The full bounds of the wallpaper panel
+    /// - fade_width: How wide the fade zone should be (perpendicular to the diagonal edge)
+    /// - diagonal_offset: The diagonal offset used for the panel edge (top-right to bottom-right-shifted)
+    /// - color: The color to fade TO (typically the listbox background color)
+    ///
+    /// The gradient is perpendicular to the diagonal edge, fading from transparent to solid
+    pub fn fill_diagonal_fade(
+        &mut self,
+        bounds: D2D_RECT_F,
+        fade_width: f32,
+        diagonal_offset: f32,
+        color: Color,
+    ) -> Result<(), Error> {
+        if fade_width <= 0.0 {
+            return Ok(());
+        }
+
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                let left = bounds.left;
+                let top = bounds.top;
+                let right = bounds.right;
+                let bottom = bounds.bottom;
+                let height = bottom - top;
+
+                // The diagonal edge goes from (right, top) to (right - diagonal_offset, bottom)
+                // We need to create a gradient perpendicular to this diagonal line
+
+                // Direction vector of the diagonal edge (pointing down-left)
+                let edge_dx = -diagonal_offset;
+                let edge_dy = height;
+                let edge_len = (edge_dx * edge_dx + edge_dy * edge_dy).sqrt();
+
+                // Normal vector pointing INTO the panel (perpendicular, pointing left)
+                // Rotate edge direction 90 degrees clockwise to get inward normal
+                let normal_x = edge_dy / edge_len; // Points left (into panel)
+                let normal_y = -edge_dx / edge_len; // Points down slightly
+
+                // Gradient starts at the diagonal edge and goes inward by fade_width
+                // Start point: middle of diagonal edge
+                let edge_mid_x = right - diagonal_offset / 2.0;
+                let edge_mid_y = top + height / 2.0;
+
+                // End point: fade_width pixels inward from the edge
+                let gradient_start_x = edge_mid_x;
+                let gradient_start_y = edge_mid_y;
+                let gradient_end_x = edge_mid_x - normal_x * fade_width;
+                let gradient_end_y = edge_mid_y - normal_y * fade_width;
+
+                let gradient_props = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                    startPoint: D2D_POINT_2F {
+                        x: gradient_start_x,
+                        y: gradient_start_y,
+                    },
+                    endPoint: D2D_POINT_2F {
+                        x: gradient_end_x,
+                        y: gradient_end_y,
+                    },
+                };
+
+                // Gradient stops: solid at the edge, transparent inside
+                let stops = [
+                    D2D1_GRADIENT_STOP {
+                        position: 0.0,
+                        color: D2D1_COLOR_F {
+                            r: color.r,
+                            g: color.g,
+                            b: color.b,
+                            a: color.a, // Solid at the diagonal edge
+                        },
+                    },
+                    D2D1_GRADIENT_STOP {
+                        position: 1.0,
+                        color: D2D1_COLOR_F {
+                            r: color.r,
+                            g: color.g,
+                            b: color.b,
+                            a: 0.0, // Transparent inside (wallpaper shows through)
+                        },
+                    },
+                ];
+
+                let gradient_stops = target.CreateGradientStopCollection(
+                    &stops,
+                    D2D1_GAMMA_2_2,
+                    D2D1_EXTEND_MODE_CLAMP,
+                )?;
+
+                let brush =
+                    target.CreateLinearGradientBrush(&gradient_props, None, &gradient_stops)?;
+
+                // Fill the entire bounds with the gradient - the gradient direction
+                // ensures only the area near the diagonal edge gets the color
+                let rect = D2D_RECT_F {
+                    left,
+                    top,
+                    right,
+                    bottom,
+                };
+                target.FillRectangle(&rect, &brush);
+            }
+        }
+        Ok(())
+    }
+
     /// Create a text format
     pub fn create_text_format(
         &self,
@@ -1240,6 +1384,32 @@ impl Renderer {
     /// Get render target (for advanced bitmap operations)
     pub fn render_target(&self) -> Option<&ID2D1DCRenderTarget> {
         self.render_target.as_ref()
+    }
+
+    /// Draw an icon for an executable file, loading and caching as needed
+    /// Returns true if icon was drawn, false if no icon available
+    pub fn draw_icon(&mut self, exe_path: &str, dest_rect: D2D_RECT_F, opacity: f32) -> bool {
+        // Need render target to load icons
+        let Some(ref target) = self.render_target else {
+            return false;
+        };
+
+        // Get or load the icon
+        if let Some(icon) = self.icon_loader.get_icon(exe_path, target) {
+            // Draw the icon bitmap, stretching to fit the dest rect
+            unsafe {
+                target.DrawBitmap(
+                    &icon.bitmap,
+                    Some(&dest_rect),
+                    opacity,
+                    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                    None,
+                );
+            }
+            true
+        } else {
+            false
+        }
     }
 }
 
