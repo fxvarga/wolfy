@@ -148,6 +148,10 @@ pub struct ThemeLayout {
     pub wallpaper_panel_diagonal: f32,
     /// Wallpaper panel fade width (how wide the feathered edge is along the diagonal)
     pub wallpaper_panel_fade_width: f32,
+    /// Wallpaper panel fade color (color to fade TO at the diagonal edge)
+    pub wallpaper_panel_fade_color: Option<Color>,
+    /// Wallpaper panel fade opacity multiplier (0.0-1.0, controls how solid the fade is)
+    pub wallpaper_panel_fade_opacity: f32,
     /// Listbox background color
     pub listbox_bg: Color,
     /// Listbox corner radii (per-corner)
@@ -266,6 +270,8 @@ impl Default for ThemeLayout {
             wallpaper_panel_radii: CornerRadii::uniform(16.0),
             wallpaper_panel_diagonal: 0.0,     // No diagonal by default
             wallpaper_panel_fade_width: 100.0, // Fade gradient width along diagonal edge
+            wallpaper_panel_fade_color: None,  // None = use listbox_bg color
+            wallpaper_panel_fade_opacity: 0.7, // Default opacity multiplier (0.7 = softer fade)
             listbox_bg: Color::from_hex("#262335e6").unwrap_or(Color::BLACK),
             listbox_radii: CornerRadii::uniform(16.0),
             listbox_padding: 0.0,
@@ -373,6 +379,13 @@ impl ThemeLayout {
                 None,
                 "fade-width",
                 default.wallpaper_panel_fade_width as f64,
+            ) as f32,
+            wallpaper_panel_fade_color: theme.get_color_opt("wallpaper-panel", None, "fade-color"),
+            wallpaper_panel_fade_opacity: theme.get_number(
+                "wallpaper-panel",
+                None,
+                "fade-opacity",
+                default.wallpaper_panel_fade_opacity as f64,
             ) as f32,
             listbox_bg: theme.get_color("listbox", None, "background-color", default.listbox_bg),
             listbox_radii: read_corner_radii("listbox", default.listbox_radii),
@@ -518,7 +531,7 @@ impl ThemeLayout {
 fn load_task_panel_style(theme: &ThemeTree) -> TaskPanelStyle {
     let default = TaskPanelStyle::default();
 
-    TaskPanelStyle {
+    let style = TaskPanelStyle {
         enabled: theme.get_bool("task-panel", None, "enabled", default.enabled),
         position: {
             let pos = theme.get_string("task-panel", None, "position", "left");
@@ -527,6 +540,8 @@ fn load_task_panel_style(theme: &ThemeTree) -> TaskPanelStyle {
                 _ => TaskPanelPosition::Left,
             }
         },
+
+        // Colors
         background_color: theme.get_color(
             "task-panel",
             None,
@@ -546,10 +561,76 @@ fn load_task_panel_style(theme: &ThemeTree) -> TaskPanelStyle {
             "group-icon-color",
             default.group_icon_color,
         ),
-        font_family: theme.get_string("task-panel", None, "font-family", &default.font_family),
+        text_color: theme.get_color("task-panel", None, "text-color", default.text_color),
+        text_color_hover: theme.get_color(
+            "task-panel",
+            None,
+            "text-color-hover",
+            default.text_color_hover,
+        ),
+        item_background_color: theme.get_color(
+            "task-panel",
+            None,
+            "item-background-color",
+            default.item_background_color,
+        ),
+        selected_background_color: theme.get_color(
+            "task-panel",
+            None,
+            "selected-background-color",
+            default.selected_background_color,
+        ),
+        tree_line_color: theme.get_color(
+            "task-panel",
+            None,
+            "tree-line-color",
+            default.tree_line_color,
+        ),
+        chevron_color: theme.get_color("task-panel", None, "chevron-color", default.chevron_color),
+
+        // Typography
+        icon_font_family: theme.get_string(
+            "task-panel",
+            None,
+            "icon-font-family",
+            &default.icon_font_family,
+        ),
+        text_font_family: theme.get_string(
+            "task-panel",
+            None,
+            "text-font-family",
+            &default.text_font_family,
+        ),
         icon_size: theme.get_number("task-panel", None, "icon-size", default.icon_size as f64)
             as f32,
-        width: theme.get_number("task-panel", None, "width", default.width as f64) as f32,
+        text_size: theme.get_number("task-panel", None, "text-size", default.text_size as f64)
+            as f32,
+
+        // Dimensions
+        compact_width: theme.get_number(
+            "task-panel",
+            None,
+            "compact-width",
+            default.compact_width as f64,
+        ) as f32,
+        expanded_width: theme.get_number(
+            "task-panel",
+            None,
+            "expanded-width",
+            default.expanded_width as f64,
+        ) as f32,
+        item_height: theme.get_number(
+            "task-panel",
+            None,
+            "item-height",
+            default.item_height as f64,
+        ) as f32,
+        item_corner_radius: theme.get_number(
+            "task-panel",
+            None,
+            "item-corner-radius",
+            default.item_corner_radius as f64,
+        ) as f32,
         padding: theme.get_number("task-panel", None, "padding", default.padding as f64) as f32,
         group_spacing: theme.get_number(
             "task-panel",
@@ -557,11 +638,11 @@ fn load_task_panel_style(theme: &ThemeTree) -> TaskPanelStyle {
             "group-spacing",
             default.group_spacing as f64,
         ) as f32,
-        task_spacing: theme.get_number(
+        item_spacing: theme.get_number(
             "task-panel",
             None,
-            "task-spacing",
-            default.task_spacing as f64,
+            "item-spacing",
+            default.item_spacing as f64,
         ) as f32,
         border_radius: theme.get_number(
             "task-panel",
@@ -569,7 +650,39 @@ fn load_task_panel_style(theme: &ThemeTree) -> TaskPanelStyle {
             "border-radius",
             default.border_radius as f64,
         ) as f32,
-    }
+        sub_item_indent: theme.get_number(
+            "task-panel",
+            None,
+            "sub-item-indent",
+            default.sub_item_indent as f64,
+        ) as f32,
+
+        // Icons
+        chevron_collapsed: theme.get_string(
+            "task-panel",
+            None,
+            "chevron-collapsed",
+            &default.chevron_collapsed,
+        ),
+        chevron_expanded: theme.get_string(
+            "task-panel",
+            None,
+            "chevron-expanded",
+            &default.chevron_expanded,
+        ),
+        tree_branch: theme.get_string("task-panel", None, "tree-branch", &default.tree_branch),
+        tree_corner: theme.get_string("task-panel", None, "tree-corner", &default.tree_corner),
+    };
+
+    log!(
+        "Task panel style loaded: icon_font='{}', compact_width={}, expanded_width={}, enabled={}",
+        style.icon_font_family,
+        style.compact_width,
+        style.expanded_width,
+        style.enabled
+    );
+
+    style
 }
 
 /// Application state
@@ -1010,6 +1123,64 @@ impl App {
                         return result;
                     }
                 }
+                // Left/Right arrow keys - expand/collapse accordion when task panel focused
+                KeyCode::Left | KeyCode::Right => {
+                    let task_panel_focused = self
+                        .task_panel
+                        .as_ref()
+                        .map(|tp| tp.focused)
+                        .unwrap_or(false);
+
+                    if task_panel_focused {
+                        if let Some(ref mut task_panel) = self.task_panel {
+                            if let Some(selected_idx) = task_panel.selected_item {
+                                if let Some(item_state) =
+                                    task_panel.item_states.get(selected_idx).cloned()
+                                {
+                                    if item_state.is_group_header {
+                                        let group_idx = item_state.group_index;
+                                        let is_expanded = task_panel
+                                            .expanded_groups
+                                            .get(group_idx)
+                                            .copied()
+                                            .unwrap_or(false);
+
+                                        if *key == KeyCode::Right && !is_expanded {
+                                            // Right opens accordion
+                                            task_panel.toggle_group(group_idx);
+                                            return EventResult {
+                                                needs_repaint: true,
+                                                consumed: true,
+                                                text_changed: false,
+                                                submit: false,
+                                                cancel: false,
+                                            };
+                                        } else if *key == KeyCode::Left && is_expanded {
+                                            // Left closes accordion
+                                            task_panel.toggle_group(group_idx);
+                                            return EventResult {
+                                                needs_repaint: true,
+                                                consumed: true,
+                                                text_changed: false,
+                                                submit: false,
+                                                cancel: false,
+                                            };
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Consume the event even if no toggle (don't let it go to textbox)
+                        return EventResult {
+                            needs_repaint: false,
+                            consumed: true,
+                            text_changed: false,
+                            submit: false,
+                            cancel: false,
+                        };
+                    }
+                    // If not focused on task panel, let textbox handle Left/Right for cursor movement
+                }
                 // Enter activates selected item (task panel or list)
                 KeyCode::Enter => {
                     // Check if task panel has focus and selection
@@ -1177,9 +1348,21 @@ impl App {
 
                 if let Some(state) = item_state {
                     if state.is_group_header {
-                        // Toggle group expansion
-                        task_panel.toggle_group(state.group_index);
-                        log!("Toggled group {} expansion", state.group_index);
+                        // If the panel isn't focused yet, focus it first.
+                        // This avoids toggling groups in compact mode (submenu isn't visible there).
+                        if !task_panel.focused && self.task_panel_style.enabled {
+                            task_panel.set_focus(true);
+                            task_panel.selected_item = Some(item_idx);
+                            log!(
+                                "Task panel clicked (group header) while unfocused - focusing panel"
+                            );
+                        } else {
+                            // Toggle group expansion only when focused/expanded
+                            if task_panel.is_expanded() {
+                                task_panel.toggle_group(state.group_index);
+                                log!("Toggled group {} expansion", state.group_index);
+                            }
+                        }
                         return EventResult {
                             needs_repaint: true,
                             consumed: true,
@@ -1188,6 +1371,20 @@ impl App {
                             cancel: false,
                         };
                     } else if let Some(task_idx) = state.task_index {
+                        // If user clicks a task while panel isn't focused, focus it first.
+                        if !task_panel.focused && self.task_panel_style.enabled {
+                            task_panel.set_focus(true);
+                            task_panel.selected_item = Some(item_idx);
+                            log!("Task panel clicked (task) while unfocused - focusing panel");
+                            return EventResult {
+                                needs_repaint: true,
+                                consumed: true,
+                                text_changed: false,
+                                submit: false,
+                                cancel: false,
+                            };
+                        }
+
                         // Run the task
                         if let Some(group) = task_panel.config.groups.get(state.group_index) {
                             if let Some(task) = group.tasks.get(task_idx) {
@@ -1405,9 +1602,10 @@ impl App {
         // Update task panel style
         self.task_panel_style = load_task_panel_style(&theme);
         log!(
-            "  Updated task panel style: enabled={}, width={}, icon_size={}",
+            "  Updated task panel style: enabled={}, compact_width={}, expanded_width={}, icon_size={}",
             self.task_panel_style.enabled,
-            self.task_panel_style.width,
+            self.task_panel_style.compact_width,
+            self.task_panel_style.expanded_width,
             self.task_panel_style.icon_size
         );
 
@@ -1424,7 +1622,7 @@ impl App {
                     .groups
                     .iter()
                     .enumerate()
-                    .map(|(i, g)| old_expanded.get(i).copied().unwrap_or(g.expanded))
+                    .map(|(i, _g)| old_expanded.get(i).copied().unwrap_or(false))
                     .collect();
                 log!("  Reloaded tasks.toml");
             }
@@ -1707,13 +1905,18 @@ impl App {
                 bottom: y + height,
             };
 
-            // Use a semi-transparent version of the listbox color for a softer shadow effect
-            // This creates a gentle vignette rather than a hard transition
+            // Use custom fade color if specified, otherwise fall back to listbox background
+            let base_color = self
+                .theme_layout
+                .wallpaper_panel_fade_color
+                .unwrap_or(self.theme_layout.listbox_bg);
+
+            // Apply configurable opacity multiplier
             let fade_color = Color::from_f32(
-                self.theme_layout.listbox_bg.r,
-                self.theme_layout.listbox_bg.g,
-                self.theme_layout.listbox_bg.b,
-                self.theme_layout.listbox_bg.a * 0.7, // Reduce opacity for softer effect
+                base_color.r,
+                base_color.g,
+                base_color.b,
+                base_color.a * self.theme_layout.wallpaper_panel_fade_opacity,
             );
 
             let _ = self
@@ -1909,21 +2112,35 @@ impl App {
             None => return,
         };
 
+        // Show expanded sidebar only when focused
+        let show_expanded = task_panel.focused && task_panel.is_expanded();
+
         // Scale dimensions
-        let panel_width_scaled = style.width * scale;
-        let padding = style.padding * scale;
-        let icon_size = style.icon_size * scale;
-        let group_spacing = style.group_spacing * scale;
-        let task_spacing = style.task_spacing * scale;
+        let outer_padding = style.padding * scale;
+        let inner_padding = style.padding * scale;
+        let panel_width_scaled = if show_expanded {
+            style.expanded_width * scale
+        } else {
+            style.compact_width * scale
+        };
+        let panel_content_height = panel_height - 2.0 * outer_padding;
         let border_radius = style.border_radius * scale;
+
+        // Row metrics
+        let row_height = style.item_height * scale;
+        let row_spacing = style.item_spacing * scale;
+        let group_spacing = style.group_spacing * scale;
+        let icon_size = style.icon_size * scale;
+        let text_size = style.text_size * scale;
+        let sub_indent = style.sub_item_indent * scale;
+        let item_radius = style.item_corner_radius * scale;
 
         // Calculate panel position based on style.position
         let panel_left = match style.position {
-            TaskPanelPosition::Left => panel_x + padding,
-            TaskPanelPosition::Right => panel_x + panel_width - panel_width_scaled - padding,
+            TaskPanelPosition::Left => panel_x + outer_padding,
+            TaskPanelPosition::Right => panel_x + panel_width - panel_width_scaled - outer_padding,
         };
-        let panel_top = panel_y + padding;
-        let panel_content_height = panel_height - 2.0 * padding;
+        let panel_top = panel_y + outer_padding;
 
         // Store panel bounds for hit-testing
         task_panel.panel_bounds = Rect::new(
@@ -1947,11 +2164,11 @@ impl App {
             style.background_color,
         );
 
-        // Create icon text format
+        // Create text formats
         let icon_format =
             match self
                 .renderer
-                .create_text_format(&style.font_family, icon_size, false, false)
+                .create_text_format(&style.icon_font_family, icon_size, false, false)
             {
                 Ok(f) => f,
                 Err(e) => {
@@ -1960,187 +2177,318 @@ impl App {
                 }
             };
 
+        let text_format =
+            match self
+                .renderer
+                .create_text_format(&style.text_font_family, text_size, false, false)
+            {
+                Ok(f) => f,
+                Err(e) => {
+                    log!("Failed to create task panel text format: {:?}", e);
+                    return;
+                }
+            };
+
         // Clear previous item states
         task_panel.item_states.clear();
 
-        // Draw groups and tasks
-        let mut y = panel_top + padding;
-        let center_x = panel_left + panel_width_scaled / 2.0;
-
-        // We need to clone the data we need since we can't borrow task_panel mutably while iterating
+        // Clone data needed to avoid borrow conflicts
         let groups: Vec<_> = task_panel.config.groups.iter().cloned().collect();
-        let expanded: Vec<_> = task_panel.expanded_groups.clone();
+        let expanded_groups: Vec<_> = task_panel.expanded_groups.clone();
         let hovered = task_panel.hovered_item;
         let selected = task_panel.selected_item;
         let is_focused = task_panel.focused;
 
-        // Circle background colors
-        let circle_bg_normal = Color::from_f32(1.0, 1.0, 1.0, 0.1);
-        let circle_bg_hover = Color::from_f32(1.0, 1.0, 1.0, 0.25);
-        let circle_radius = icon_size / 2.0 + 4.0 * scale; // Slightly larger than icon
-        let circle_diameter = circle_radius * 2.0;
+        let mut y = panel_top + inner_padding;
 
+        // Compact mode: group icons only
+        if !show_expanded {
+            for (group_idx, group) in groups.iter().enumerate() {
+                let item_index = task_panel.item_states.len();
+                let is_hovered = hovered == Some(item_index);
+                let is_selected = is_focused && selected == Some(item_index);
+
+                // Background behind icon
+                let row_rect = D2D_RECT_F {
+                    left: panel_left + inner_padding,
+                    top: y,
+                    right: panel_left + panel_width_scaled - inner_padding,
+                    bottom: y + row_height,
+                };
+
+                let bg = if is_selected {
+                    style.selected_background_color
+                } else if is_hovered {
+                    style.item_background_color
+                } else {
+                    Color::TRANSPARENT
+                };
+                if bg.a > 0.0 {
+                    let _ = self
+                        .renderer
+                        .fill_rounded_rect(row_rect, item_radius, item_radius, bg);
+                }
+
+                let icon_color = if is_hovered || is_selected {
+                    style.icon_color_hover
+                } else {
+                    style.group_icon_color
+                };
+                // In compact mode, shift icon left a few pixels to visually center it in the hover rect
+                // This compensates for font rendering and visual perception
+                let icon_offset = 3.0 * scale;
+                let icon_rect = D2D_RECT_F {
+                    left: row_rect.left - icon_offset,
+                    top: row_rect.top,
+                    right: row_rect.right - icon_offset,
+                    bottom: row_rect.bottom,
+                };
+                let _ = self.renderer.draw_text_centered(
+                    &group.icon,
+                    &icon_format,
+                    icon_rect,
+                    icon_color,
+                );
+
+                task_panel.item_states.push(TaskItemState {
+                    group_index: group_idx,
+                    task_index: None,
+                    bounds: Rect::new(
+                        row_rect.left,
+                        row_rect.top,
+                        row_rect.right - row_rect.left,
+                        row_height,
+                    ),
+                    is_group_header: true,
+                });
+
+                y += row_height + group_spacing;
+            }
+
+            // Tooltip only in compact mode; collect first to avoid borrow conflicts
+            let tooltip_data: Option<(String, f32, f32)> =
+                if let Some(hovered_idx) = task_panel.hovered_item {
+                    if let Some((group, task)) = task_panel.get_task_at_index(hovered_idx) {
+                        if let Some(item_state) = task_panel.item_states.get(hovered_idx) {
+                            let tooltip_text = if let Some(t) = task {
+                                t.name.clone()
+                            } else {
+                                group.name.clone()
+                            };
+                            Some((
+                                tooltip_text,
+                                item_state.bounds.x + item_state.bounds.width + 6.0 * scale,
+                                item_state.bounds.y,
+                            ))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+            // Release task_panel borrow before drawing tooltip
+            let _ = task_panel;
+            if let Some((text, x, y)) = tooltip_data {
+                self.draw_tooltip(&text, x, y, scale);
+            }
+
+            return;
+        }
+
+        // Expanded mode
         for (group_idx, group) in groups.iter().enumerate() {
-            let is_expanded = expanded.get(group_idx).copied().unwrap_or(false);
+            let has_tasks = !group.tasks.is_empty();
+            let is_group_expanded = expanded_groups.get(group_idx).copied().unwrap_or(false);
 
-            // Calculate circle center position
-            let icon_center_x = center_x;
-            let icon_center_y = y + circle_radius;
-
-            // Check if this group header is hovered or selected
+            // Group row
             let item_index = task_panel.item_states.len();
             let is_hovered = hovered == Some(item_index);
             let is_selected = is_focused && selected == Some(item_index);
 
-            // Draw circular background
-            let circle_color = if is_hovered || is_selected {
-                circle_bg_hover
-            } else {
-                circle_bg_normal
+            let row_rect = D2D_RECT_F {
+                left: panel_left + inner_padding,
+                top: y,
+                right: panel_left + panel_width_scaled - inner_padding,
+                bottom: y + row_height,
             };
-            let _ = self.renderer.fill_circle(
-                icon_center_x,
-                icon_center_y,
-                circle_radius,
-                circle_color,
-            );
 
-            let group_color = if is_hovered || is_selected {
+            let bg = if is_selected {
+                style.selected_background_color
+            } else if is_hovered {
+                style.item_background_color
+            } else {
+                Color::TRANSPARENT
+            };
+            if bg.a > 0.0 {
+                let _ = self
+                    .renderer
+                    .fill_rounded_rect(row_rect, item_radius, item_radius, bg);
+            }
+
+            // Icon
+            let icon_box = row_height;
+            let icon_rect = D2D_RECT_F {
+                left: row_rect.left,
+                top: row_rect.top,
+                right: row_rect.left + icon_box,
+                bottom: row_rect.bottom,
+            };
+
+            let group_icon_color = if is_hovered || is_selected {
                 style.icon_color_hover
             } else {
                 style.group_icon_color
             };
+            let _ = self.renderer.draw_text_centered(
+                &group.icon,
+                &icon_format,
+                icon_rect,
+                group_icon_color,
+            );
 
-            // Draw group icon centered in circle
-            let icon_rect = D2D_RECT_F {
-                left: icon_center_x - circle_radius,
-                top: icon_center_y - circle_radius,
-                right: icon_center_x + circle_radius,
-                bottom: icon_center_y + circle_radius,
+            // Chevron
+            let chevron_rect = D2D_RECT_F {
+                left: row_rect.right - icon_box,
+                top: row_rect.top,
+                right: row_rect.right,
+                bottom: row_rect.bottom,
             };
-            let _ =
-                self.renderer
-                    .draw_text_centered(&group.icon, &icon_format, icon_rect, group_color);
 
-            // Store item state for hit-testing (use circle bounds)
+            if has_tasks {
+                let chevron = if is_group_expanded {
+                    &style.chevron_expanded
+                } else {
+                    &style.chevron_collapsed
+                };
+                let _ = self.renderer.draw_text_centered(
+                    chevron,
+                    &icon_format,
+                    chevron_rect,
+                    style.chevron_color,
+                );
+            }
+
+            // Group label
+            let label_rect = D2D_RECT_F {
+                left: icon_rect.right + 6.0 * scale,
+                top: row_rect.top,
+                right: if has_tasks {
+                    chevron_rect.left - 6.0 * scale
+                } else {
+                    row_rect.right - 6.0 * scale
+                },
+                bottom: row_rect.bottom,
+            };
+            let text_color = if is_hovered || is_selected {
+                style.text_color_hover
+            } else {
+                style.text_color
+            };
+            let _ = self
+                .renderer
+                .draw_text(&group.name, &text_format, label_rect, text_color);
+
+            // Hit-test bounds for group row
             task_panel.item_states.push(TaskItemState {
                 group_index: group_idx,
                 task_index: None,
                 bounds: Rect::new(
-                    icon_center_x - circle_radius,
-                    icon_center_y - circle_radius,
-                    circle_diameter,
-                    circle_diameter,
+                    row_rect.left,
+                    row_rect.top,
+                    row_rect.right - row_rect.left,
+                    row_height,
                 ),
                 is_group_header: true,
             });
 
-            y += circle_diameter + task_spacing;
+            y += row_height + row_spacing;
 
-            // Draw tasks if expanded
-            if is_expanded {
+            // Sub-items only when focused/expanded and group is open
+            if has_tasks && is_group_expanded {
                 for (task_idx, task) in group.tasks.iter().enumerate() {
-                    // Calculate circle center position
-                    let task_center_x = center_x;
-                    let task_center_y = y + circle_radius;
-
-                    // Check if this task is hovered or selected
                     let item_index = task_panel.item_states.len();
                     let is_hovered = hovered == Some(item_index);
                     let is_selected = is_focused && selected == Some(item_index);
 
-                    // Draw circular background
-                    let circle_color = if is_hovered || is_selected {
-                        circle_bg_hover
-                    } else {
-                        circle_bg_normal
+                    let task_row = D2D_RECT_F {
+                        left: row_rect.left,
+                        top: y,
+                        right: row_rect.right,
+                        bottom: y + row_height,
                     };
-                    let _ = self.renderer.fill_circle(
-                        task_center_x,
-                        task_center_y,
-                        circle_radius,
-                        circle_color,
+
+                    let bg = if is_selected {
+                        style.selected_background_color
+                    } else if is_hovered {
+                        style.item_background_color
+                    } else {
+                        Color::TRANSPARENT
+                    };
+                    if bg.a > 0.0 {
+                        let _ =
+                            self.renderer
+                                .fill_rounded_rect(task_row, item_radius, item_radius, bg);
+                    }
+
+                    // Tree prefix
+                    let is_last = task_idx + 1 == group.tasks.len();
+                    let prefix = if is_last {
+                        &style.tree_corner
+                    } else {
+                        &style.tree_branch
+                    };
+
+                    let prefix_rect = D2D_RECT_F {
+                        left: task_row.left + sub_indent,
+                        top: task_row.top,
+                        right: task_row.left + sub_indent + 24.0 * scale,
+                        bottom: task_row.bottom,
+                    };
+                    let _ = self.renderer.draw_text(
+                        prefix,
+                        &text_format,
+                        prefix_rect,
+                        style.tree_line_color,
                     );
 
-                    let task_color = if is_hovered || is_selected {
-                        style.icon_color_hover
+                    // Task label
+                    let label_rect = D2D_RECT_F {
+                        left: prefix_rect.right + 6.0 * scale,
+                        top: task_row.top,
+                        right: task_row.right - 6.0 * scale,
+                        bottom: task_row.bottom,
+                    };
+                    let text_color = if is_hovered || is_selected {
+                        style.text_color_hover
                     } else {
-                        style.icon_color
+                        style.text_color
                     };
+                    let _ =
+                        self.renderer
+                            .draw_text(&task.name, &text_format, label_rect, text_color);
 
-                    // Draw task icon centered in circle
-                    let task_rect = D2D_RECT_F {
-                        left: task_center_x - circle_radius,
-                        top: task_center_y - circle_radius,
-                        right: task_center_x + circle_radius,
-                        bottom: task_center_y + circle_radius,
-                    };
-                    let _ = self.renderer.draw_text_centered(
-                        &task.icon,
-                        &icon_format,
-                        task_rect,
-                        task_color,
-                    );
-
-                    // Store item state for hit-testing (use circle bounds)
+                    // Hit-test bounds for task row
                     task_panel.item_states.push(TaskItemState {
                         group_index: group_idx,
                         task_index: Some(task_idx),
                         bounds: Rect::new(
-                            task_center_x - circle_radius,
-                            task_center_y - circle_radius,
-                            circle_diameter,
-                            circle_diameter,
+                            task_row.left,
+                            task_row.top,
+                            task_row.right - task_row.left,
+                            row_height,
                         ),
                         is_group_header: false,
                     });
 
-                    y += circle_diameter + task_spacing;
+                    y += row_height + row_spacing;
                 }
             }
 
-            y += group_spacing - task_spacing; // Extra spacing between groups
-        }
-
-        // Draw tooltip if hovering over an item OR if panel is focused with keyboard selection
-        // Collect tooltip data first to avoid borrow conflicts
-        let tooltip_idx = if let Some(hovered_idx) = task_panel.hovered_item {
-            // Mouse hover takes priority
-            Some(hovered_idx)
-        } else if task_panel.focused {
-            // When focused, show tooltip for keyboard-selected item
-            task_panel.selected_item
-        } else {
-            None
-        };
-
-        let tooltip_data: Option<(String, f32, f32)> = if let Some(idx) = tooltip_idx {
-            if let Some((group, task)) = task_panel.get_task_at_index(idx) {
-                let tooltip_text = if let Some(t) = task {
-                    t.name.clone()
-                } else {
-                    group.name.clone()
-                };
-
-                if let Some(item_state) = task_panel.item_states.get(idx) {
-                    Some((
-                        tooltip_text,
-                        item_state.bounds.x + item_state.bounds.width + 4.0 * scale,
-                        item_state.bounds.y,
-                    ))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        // Now draw tooltip without holding task_panel borrow
-        if let Some((text, x, y)) = tooltip_data {
-            self.draw_tooltip(&text, x, y, scale);
+            y += group_spacing;
         }
     }
 
@@ -2154,7 +2502,7 @@ impl App {
         let text_color = Color::WHITE;
 
         let text_format = match self.renderer.create_text_format(
-            &self.task_panel_style.font_family,
+            &self.task_panel_style.text_font_family,
             font_size,
             false,
             false,
@@ -2396,6 +2744,11 @@ impl App {
             self.textbox.set_state(WidgetState::Focused);
             self.textbox.show_cursor();
             self.start_cursor_timer();
+
+            // Reset task panel focus to list view (always start unfocused/compact)
+            if let Some(ref mut task_panel) = self.task_panel {
+                task_panel.set_focus(false);
+            }
 
             // Initialize listview with all items
             self.listview.set_items(self.all_items.clone());

@@ -1179,6 +1179,8 @@ impl Renderer {
             // Set text alignment
             format.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING)?;
             format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+            // Disable word wrapping by default
+            format.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
 
             Ok(format)
         }
@@ -1218,20 +1220,39 @@ impl Renderer {
         rect: D2D_RECT_F,
         color: Color,
     ) -> Result<(), Error> {
-        // Measure text first
-        let rect_width = rect.right - rect.left;
-        let rect_height = rect.bottom - rect.top;
-        let (text_width, text_height) = self.measure_text(text, format, rect_width, rect_height)?;
+        let brush = self.get_brush(color)?;
+        let text_wide: Vec<u16> = text.encode_utf16().collect();
 
-        // Calculate centered position
-        let centered_rect = D2D_RECT_F {
-            left: rect.left + (rect_width - text_width) / 2.0,
-            top: rect.top + (rect_height - text_height) / 2.0,
-            right: rect.right,
-            bottom: rect.bottom,
-        };
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                let rect_width = rect.right - rect.left;
+                let rect_height = rect.bottom - rect.top;
 
-        self.draw_text(text, format, centered_rect, color)
+                // Create layout with actual rect size and center alignment
+                let layout = self.dwrite_factory.CreateTextLayout(
+                    &text_wide,
+                    format,
+                    rect_width,
+                    rect_height,
+                )?;
+
+                // Set text alignment to center
+                layout.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
+                layout.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+
+                // Draw at rect origin - layout handles centering
+                target.DrawTextLayout(
+                    D2D_POINT_2F {
+                        x: rect.left,
+                        y: rect.top,
+                    },
+                    &layout,
+                    &brush,
+                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Measure text dimensions

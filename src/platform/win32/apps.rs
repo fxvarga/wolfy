@@ -55,19 +55,10 @@ const FILTER_NAME_PATTERNS: &[&str] = &[
 ];
 
 /// Folder names to skip (case-insensitive)
-const FILTER_FOLDER_PATTERNS: &[&str] = &[
-    "administrative tools",
-    "accessibility",
-    "windows accessories",
-    "system tools",
-    "startup",
-    "maintenance",
-    "windows administrative tools",
-    "windows system",
-];
+const FILTER_FOLDER_PATTERNS: &[&str] = &["startup", "maintenance"];
 
 /// Target executables to filter out
-const FILTER_TARGETS: &[&str] = &["msiexec.exe", "control.exe", "mmc.exe", "rundll32.exe"];
+const FILTER_TARGETS: &[&str] = &["msiexec.exe", "control.exe", "rundll32.exe"];
 
 /// Check if a name should be filtered out
 fn should_filter_name(name: &str) -> bool {

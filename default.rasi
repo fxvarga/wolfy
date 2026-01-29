@@ -160,15 +160,41 @@ dummy {
 task-panel {
     enabled: true;
     position: left;                /* left or right within wallpaper panel */
-    width: 64;                     /* Wider to fit circular icon backgrounds */
-    background-color: #00000050;   /* Semi-transparent dark background */
-    icon-color: #cdd6f4;           /* Default icon color */
-    icon-color-hover: #89b4fa;     /* Icon color on hover */
+
+    /* Panel sizing */
+    compact-width: 64;             /* Unfocused: icons-only */
+    expanded-width: 260;           /* Focused: icon + label + submenu */
+
+    /* Colors */
+    background-color: #00000050;   /* Panel background (semi-transparent) */
+    item-background-color: #ffffff14;      /* Hover background */
+    selected-background-color: #38598870;  /* Selected row - subtle blue */
+    icon-color: #cdd6f4;           /* Icon color (normal) */
+    icon-color-hover: #89b4fa;     /* Icon color (hover/selected) */
     group-icon-color: #f97e72;     /* Group header icon color */
-    font-family: "JetBrainsMono Nerd Font";
+    text-color: #cdd6f4;           /* Label color */
+    text-color-hover: #ffffffff;   /* Label hover/selected */
+    tree-line-color: #cdd6f4b0;    /* Submenu tree line */
+    chevron-color: #cdd6f4b0;
+
+    /* Typography */
+    icon-font-family: "JetBrainsMono Nerd Font";
+    text-font-family: "JetBrainsMono Nerd Font";
     icon-size: 24;
-    padding: 16;
-    group-spacing: 20;             /* Space between groups */
-    task-spacing: 10;              /* Space between tasks within a group */
-    border-radius: 8;
+    text-size: 14;
+
+    /* Layout */
+    item-height: 42;
+    item-corner-radius: 10;
+    padding: 12;
+    group-spacing: 10;
+    item-spacing: 4;
+    border-radius: 10;
+    sub-item-indent: 34;
+
+    /* ASCII tree drawing characters */
+    chevron-collapsed: ">";
+    chevron-expanded: "v";
+    tree-branch: "|-";
+    tree-corner: "L-";
 }

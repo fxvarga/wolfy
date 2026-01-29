@@ -1,5 +1,6 @@
 # Wolfy Task Panel Configuration
 # Quick-launch PowerShell scripts organized by groups
+# Icons use Nerd Font glyphs (Unicode escapes like \uf121)
 
 [settings]
 position = "left"
@@ -7,31 +8,57 @@ position = "left"
 # Development tools group
 [[groups]]
 name = "Dev"
-icon = ""
+icon = "\uf121"
 expanded = true
-tasks = [
-    { name = "Start Docker", icon = "", script = "Start-Service docker" },
-    { name = "Open VS Code", icon = "󰨞", script = "code ." },
-    { name = "Open Terminal", icon = "", script = "wt" },
-]
+
+[[groups.tasks]]
+name = "Start Docker"
+icon = "\uf308"
+script = "Start-Service docker"
+
+[[groups.tasks]]
+name = "Open VS Code"
+icon = "\uf0a1"
+script = "code ."
+
+[[groups.tasks]]
+name = "Open Terminal"
+icon = "\ue795"
+script = "wt"
 
 # System utilities group
 [[groups]]
 name = "System"
-icon = ""
+icon = "\uf013"
 expanded = false
-tasks = [
-    { name = "Disk Cleanup", icon = "", script = "cleanmgr" },
-    { name = "Task Manager", icon = "", script = "taskmgr" },
-    { name = "System Info", icon = "", script = "msinfo32" },
-]
+
+[[groups.tasks]]
+name = "Disk Cleanup"
+icon = "\uf1c0"
+script = "cleanmgr"
+
+[[groups.tasks]]
+name = "Task Manager"
+icon = "\uf0ae"
+script = "taskmgr"
+
+[[groups.tasks]]
+name = "System Info"
+icon = "\uf05a"
+script = "msinfo32"
 
 # Network tools group
 [[groups]]
 name = "Network"
-icon = ""
+icon = "\uf0ac"
 expanded = false
-tasks = [
-    { name = "Flush DNS", icon = "", script = "ipconfig /flushdns" },
-    { name = "Network Status", icon = "󰛳", script = "netstat -an | Out-GridView" },
-]
+
+[[groups.tasks]]
+name = "Flush DNS"
+icon = "\uf0ac"
+script = "ipconfig /flushdns"
+
+[[groups.tasks]]
+name = "Network Status"
+icon = "\uf0e8"
+script = "netstat -an | Out-GridView"

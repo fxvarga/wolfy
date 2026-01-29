@@ -203,6 +203,17 @@ impl ThemeTree {
             .unwrap_or(default)
     }
 
+    /// Get an optional color property (returns None if not set)
+    pub fn get_color_opt(
+        &self,
+        widget: &str,
+        state: Option<&str>,
+        property: &str,
+    ) -> Option<Color> {
+        self.get_value(widget, state, property)
+            .and_then(|v| v.as_color())
+    }
+
     /// Get a distance property with default
     pub fn get_distance(
         &self,
