@@ -46,6 +46,20 @@ wallpaper-panel {
     border-bottom-right-radius: 0;
     diagonal-edge: 60;  /* Slanted edge offset - creates diagonal from (right, top) to (right-150, bottom) */
     fade-width: 60;      /* Width of the feathered fade along the diagonal edge */
+ 
+    /* Clock overlay settings */
+    clock-enabled: true;
+    clock-position: middle-center;       /* top-left, top-center, top-right, middle-left, middle-center, middle-right, bottom-left, bottom-center, bottom-right */
+    clock-format: "%H:%M:%S";        /* strftime format - 12h: "%I:%M %p", 24h: "%H:%M" or "%H:%M:%S" */
+    clock-date-format: "%a, %b %d";  /* Date format below time - empty string to hide */
+    clock-font-family: "Segoe UI";
+    clock-font-size: 48;             /* Large bold time */
+    clock-date-font-size: 16;        /* Smaller date */
+    clock-text-color: #ffffffee;     /* White with slight transparency */
+    clock-shadow-color: #00000080;   /* 50% black shadow */
+    clock-shadow-offset-x: 2;
+    clock-shadow-offset-y: 2;
+    clock-padding: 20;               /* Distance from panel edges */
 }
 
 /* Right panel - search box and results */
@@ -140,4 +154,21 @@ element.hover {
 dummy {
     background-color: transparent;
     expand: true;
+}
+
+/* Task panel - quick-launch tasks overlaid on wallpaper panel */
+task-panel {
+    enabled: true;
+    position: left;                /* left or right within wallpaper panel */
+    width: 64;                     /* Wider to fit circular icon backgrounds */
+    background-color: #00000050;   /* Semi-transparent dark background */
+    icon-color: #ffffff;           /* Default icon color */
+    icon-color-hover: #89b4fa;     /* Icon color on hover */
+    group-icon-color: #f97e72;     /* Group header icon color */
+    font-family: "JetBrainsMono Nerd Font";
+    icon-size: 14;
+    padding: 16;
+    group-spacing: 20;             /* Space between groups */
+    task-spacing: 10;              /* Space between tasks within a group */
+    border-radius: 8;
 }

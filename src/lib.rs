@@ -19,6 +19,9 @@ pub mod animation;
 // Usage history tracking (no Windows dependencies)
 pub mod history;
 
+// Task runner configuration (no Windows dependencies)
+pub mod tasks;
+
 // Widget base types (no Windows dependencies)
 pub mod widget {
     pub mod base;

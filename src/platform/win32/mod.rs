@@ -14,7 +14,9 @@ pub mod window;
 
 pub use apps::{discover_all_apps, AppEntry};
 pub use dpi::*;
-pub use event::{post_quit, run_message_loop, translate_message, Event, KeyCode, Modifiers};
+pub use event::{
+    post_quit, run_message_loop, translate_message, Event, KeyCode, Modifiers, MouseButton,
+};
 pub use filewatcher::PollingFileWatcher;
 pub use hotkey::{
     is_toggle_hotkey, parse_hotkey_string, register_hotkey, unregister_hotkey, HotkeyConfig,

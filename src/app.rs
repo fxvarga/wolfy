@@ -13,13 +13,14 @@ use crate::history::History;
 use crate::log::exe_dir;
 use crate::platform::win32::{
     self, discover_all_apps, get_wallpaper_path, invalidate_window, reposition_window,
-    translate_message, Event, ImageLoader, PollingFileWatcher, Renderer, WindowConfig,
+    translate_message, Event, ImageLoader, MouseButton, PollingFileWatcher, Renderer, WindowConfig,
 };
+use crate::tasks::{find_tasks_config, load_tasks_config, TaskItemState, TaskPanelPosition};
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageScale, LayoutContext, Rect};
 use crate::widget::{
-    CornerRadii, ElementData, ElementStyle, EventResult, ListView, ListViewStyle, Textbox, Widget,
-    WidgetState, WidgetStyle,
+    ClockConfig, ClockPosition, CornerRadii, ElementData, ElementStyle, EventResult, ListView,
+    ListViewStyle, TaskPanelState, TaskPanelStyle, Textbox, Widget, WidgetState, WidgetStyle,
 };
 
 /// Cursor blink timer ID
@@ -34,6 +35,10 @@ const FILE_WATCH_MS: u32 = 500;
 const TIMER_ANIMATION: usize = 3;
 /// Animation frame interval in milliseconds (~60fps)
 const ANIMATION_FRAME_MS: u32 = 16;
+/// Clock update timer ID
+const TIMER_CLOCK: usize = 4;
+/// Clock update interval in milliseconds (1 second)
+const CLOCK_UPDATE_MS: u32 = 1000;
 
 /// Fuzzy match a query against a target string
 /// Returns Some(score) if matched, None if not matched
@@ -158,6 +163,8 @@ pub struct ThemeLayout {
     pub animation_duration_ms: u32,
     /// Animation easing type (ease-out, ease-in, ease-in-out, linear)
     pub animation_easing: String,
+    /// Clock configuration for wallpaper panel overlay
+    pub clock_config: ClockConfig,
 }
 
 impl ThemeLayout {
@@ -268,6 +275,7 @@ impl Default for ThemeLayout {
             listview_padding_left: 32.0,
             animation_duration_ms: 200,
             animation_easing: "ease-out-expo".to_string(),
+            clock_config: ClockConfig::default(),
         }
     }
 }
@@ -410,6 +418,82 @@ impl ThemeLayout {
                 "animation-easing",
                 &default.animation_easing,
             ),
+            clock_config: ClockConfig {
+                enabled: theme.get_bool(
+                    "wallpaper-panel",
+                    None,
+                    "clock-enabled",
+                    default.clock_config.enabled,
+                ),
+                position: ClockPosition::from_str(&theme.get_string(
+                    "wallpaper-panel",
+                    None,
+                    "clock-position",
+                    "top-right",
+                )),
+                time_format: theme.get_string(
+                    "wallpaper-panel",
+                    None,
+                    "clock-format",
+                    &default.clock_config.time_format,
+                ),
+                date_format: theme.get_string(
+                    "wallpaper-panel",
+                    None,
+                    "clock-date-format",
+                    &default.clock_config.date_format,
+                ),
+                font_family: theme.get_string(
+                    "wallpaper-panel",
+                    None,
+                    "clock-font-family",
+                    &default.clock_config.font_family,
+                ),
+                font_size: theme.get_number(
+                    "wallpaper-panel",
+                    None,
+                    "clock-font-size",
+                    default.clock_config.font_size as f64,
+                ) as f32,
+                date_font_size: theme.get_number(
+                    "wallpaper-panel",
+                    None,
+                    "clock-date-font-size",
+                    default.clock_config.date_font_size as f64,
+                ) as f32,
+                text_color: theme.get_color(
+                    "wallpaper-panel",
+                    None,
+                    "clock-text-color",
+                    default.clock_config.text_color,
+                ),
+                shadow_color: theme.get_color(
+                    "wallpaper-panel",
+                    None,
+                    "clock-shadow-color",
+                    default.clock_config.shadow_color,
+                ),
+                shadow_offset: (
+                    theme.get_number(
+                        "wallpaper-panel",
+                        None,
+                        "clock-shadow-offset-x",
+                        default.clock_config.shadow_offset.0 as f64,
+                    ) as f32,
+                    theme.get_number(
+                        "wallpaper-panel",
+                        None,
+                        "clock-shadow-offset-y",
+                        default.clock_config.shadow_offset.1 as f64,
+                    ) as f32,
+                ),
+                padding: theme.get_number(
+                    "wallpaper-panel",
+                    None,
+                    "clock-padding",
+                    default.clock_config.padding as f64,
+                ) as f32,
+            },
         };
 
         // Debug log the loaded theme layout
@@ -427,6 +511,64 @@ impl ThemeLayout {
         );
 
         layout
+    }
+}
+
+/// Load task panel style from theme
+fn load_task_panel_style(theme: &ThemeTree) -> TaskPanelStyle {
+    let default = TaskPanelStyle::default();
+
+    TaskPanelStyle {
+        enabled: theme.get_bool("task-panel", None, "enabled", default.enabled),
+        position: {
+            let pos = theme.get_string("task-panel", None, "position", "left");
+            match pos.to_lowercase().as_str() {
+                "right" => TaskPanelPosition::Right,
+                _ => TaskPanelPosition::Left,
+            }
+        },
+        background_color: theme.get_color(
+            "task-panel",
+            None,
+            "background-color",
+            default.background_color,
+        ),
+        icon_color: theme.get_color("task-panel", None, "icon-color", default.icon_color),
+        icon_color_hover: theme.get_color(
+            "task-panel",
+            None,
+            "icon-color-hover",
+            default.icon_color_hover,
+        ),
+        group_icon_color: theme.get_color(
+            "task-panel",
+            None,
+            "group-icon-color",
+            default.group_icon_color,
+        ),
+        font_family: theme.get_string("task-panel", None, "font-family", &default.font_family),
+        icon_size: theme.get_number("task-panel", None, "icon-size", default.icon_size as f64)
+            as f32,
+        width: theme.get_number("task-panel", None, "width", default.width as f64) as f32,
+        padding: theme.get_number("task-panel", None, "padding", default.padding as f64) as f32,
+        group_spacing: theme.get_number(
+            "task-panel",
+            None,
+            "group-spacing",
+            default.group_spacing as f64,
+        ) as f32,
+        task_spacing: theme.get_number(
+            "task-panel",
+            None,
+            "task-spacing",
+            default.task_spacing as f64,
+        ) as f32,
+        border_radius: theme.get_number(
+            "task-panel",
+            None,
+            "border-radius",
+            default.border_radius as f64,
+        ) as f32,
     }
 }
 
@@ -455,6 +597,10 @@ pub struct App {
     animator: WindowAnimator,
     /// Track if window is visible (to avoid double-hide issues)
     is_visible: bool,
+    /// Task panel state (for quick-launch shortcuts)
+    task_panel: Option<TaskPanelState>,
+    /// Task panel style (from theme)
+    task_panel_style: TaskPanelStyle,
 }
 
 impl App {
@@ -569,6 +715,28 @@ impl App {
             theme_layout.animation_easing
         );
 
+        // Load task panel configuration
+        let task_panel = if let Some(config_path) = find_tasks_config() {
+            log!("  Loading tasks from {:?}", config_path);
+            let config = load_tasks_config(&config_path);
+            if config.groups.is_empty() {
+                log!("  No task groups found, task panel disabled");
+                None
+            } else {
+                log!("  Loaded {} task groups", config.groups.len());
+                Some(TaskPanelState::new(config))
+            }
+        } else {
+            log!("  No tasks.toml found, task panel disabled");
+            None
+        };
+
+        // Load task panel style from theme (or use defaults)
+        let task_panel_style = theme
+            .as_ref()
+            .map(|t| load_task_panel_style(t))
+            .unwrap_or_default();
+
         log!("App::new() completed successfully");
         Ok(Self {
             hwnd,
@@ -586,6 +754,8 @@ impl App {
             theme_watcher,
             animator,
             is_visible: false,
+            task_panel,
+            task_panel_style,
         })
     }
 
@@ -628,6 +798,22 @@ impl App {
     fn stop_animation_timer(&self) {
         unsafe {
             let _ = KillTimer(self.hwnd, TIMER_ANIMATION);
+        }
+    }
+
+    /// Start clock update timer (if clock is enabled)
+    fn start_clock_timer(&self) {
+        if self.theme_layout.clock_config.enabled {
+            unsafe {
+                SetTimer(self.hwnd, TIMER_CLOCK, CLOCK_UPDATE_MS, None);
+            }
+        }
+    }
+
+    /// Stop clock update timer
+    fn stop_clock_timer(&self) {
+        unsafe {
+            let _ = KillTimer(self.hwnd, TIMER_CLOCK);
         }
     }
 
@@ -702,9 +888,16 @@ impl App {
                     let opacity = self.animator.get_opacity();
                     let _ = self.renderer.update_opacity_only(opacity);
                 } else {
-                    // Animation complete - stop the timer
+                    // Animation complete - stop the timer and start clock timer
                     self.stop_animation_timer();
+                    self.start_clock_timer();
                 }
+                return Some(LRESULT(0));
+            }
+            WM_TIMER if wparam.0 == TIMER_CLOCK => {
+                // Clock tick - repaint to update time display
+                self.renderer.mark_dirty();
+                invalidate_window(self.hwnd);
                 return Some(LRESULT(0));
             }
             WM_DPICHANGED => {
@@ -721,6 +914,21 @@ impl App {
     /// Handle an event
     fn handle_event(&mut self, event: &Event) -> EventResult {
         use crate::platform::win32::event::KeyCode;
+
+        // Handle mouse events for task panel
+        match event {
+            Event::MouseMove { x, y } => {
+                return self.handle_mouse_move(*x as f32, *y as f32);
+            }
+            Event::MouseDown {
+                x,
+                y,
+                button: MouseButton::Left,
+            } => {
+                return self.handle_mouse_click(*x as f32, *y as f32);
+            }
+            _ => {}
+        }
 
         // Handle focus lost - hide the launcher when clicking outside
         // Only process if window is currently visible (avoid double-hide)
@@ -743,16 +951,139 @@ impl App {
         // Check for navigation keys that should go to listview
         if let Event::KeyDown { key, .. } = event {
             match *key {
-                // Arrow keys navigate the list
-                KeyCode::Down | KeyCode::Up | KeyCode::PageDown | KeyCode::PageUp => {
+                // Tab toggles focus between task panel and list
+                KeyCode::Tab => {
+                    if let Some(ref mut task_panel) = self.task_panel {
+                        if task_panel.focused {
+                            // Move focus from task panel to list
+                            task_panel.set_focus(false);
+                            log!("Tab: focus moved to list");
+                        } else if self.task_panel_style.enabled && task_panel.has_tasks() {
+                            // Move focus from list to task panel
+                            task_panel.set_focus(true);
+                            log!("Tab: focus moved to task panel");
+                        }
+                        return EventResult {
+                            needs_repaint: true,
+                            consumed: true,
+                            text_changed: false,
+                            submit: false,
+                            cancel: false,
+                        };
+                    }
+                }
+                // Arrow keys - route based on focus
+                KeyCode::Down | KeyCode::Up => {
+                    // Check if task panel has focus
+                    let task_panel_focused = self
+                        .task_panel
+                        .as_ref()
+                        .map(|tp| tp.focused)
+                        .unwrap_or(false);
+
+                    if task_panel_focused {
+                        if let Some(ref mut task_panel) = self.task_panel {
+                            if *key == KeyCode::Down {
+                                task_panel.select_next();
+                            } else {
+                                task_panel.select_prev();
+                            }
+                            return EventResult {
+                                needs_repaint: true,
+                                consumed: true,
+                                text_changed: false,
+                                submit: false,
+                                cancel: false,
+                            };
+                        }
+                    } else {
+                        // Route to listview
+                        let result = self.listview.handle_event(event, &self.layout_ctx);
+                        if result.consumed {
+                            return result;
+                        }
+                    }
+                }
+                KeyCode::PageDown | KeyCode::PageUp => {
                     let result = self.listview.handle_event(event, &self.layout_ctx);
                     if result.consumed {
                         return result;
                     }
                 }
-                // Enter activates selected item
+                // Enter activates selected item (task panel or list)
                 KeyCode::Enter => {
-                    if self.listview.selected_data().is_some() {
+                    // Check if task panel has focus and selection
+                    let task_panel_focused = self
+                        .task_panel
+                        .as_ref()
+                        .map(|tp| tp.focused && tp.selected_item.is_some())
+                        .unwrap_or(false);
+
+                    if task_panel_focused {
+                        // Activate selected task panel item
+                        // First, extract the script to run (if any) to avoid borrow conflicts
+                        let script_to_run: Option<String> =
+                            if let Some(ref mut task_panel) = self.task_panel {
+                                if let Some(selected_idx) = task_panel.selected_item {
+                                    if let Some(item_state) =
+                                        task_panel.item_states.get(selected_idx).cloned()
+                                    {
+                                        if item_state.is_group_header {
+                                            // Toggle group
+                                            task_panel.toggle_group(item_state.group_index);
+                                            return EventResult {
+                                                needs_repaint: true,
+                                                consumed: true,
+                                                text_changed: false,
+                                                submit: false,
+                                                cancel: false,
+                                            };
+                                        } else {
+                                            // Get script to run
+                                            if let Some(group) =
+                                                task_panel.config.groups.get(item_state.group_index)
+                                            {
+                                                if let Some(task_idx) = item_state.task_index {
+                                                    if let Some(task) = group.tasks.get(task_idx) {
+                                                        log!(
+                                                            "Running task via keyboard: {} ({})",
+                                                            task.name,
+                                                            task.script
+                                                        );
+                                                        Some(task.script.clone())
+                                                    } else {
+                                                        None
+                                                    }
+                                                } else {
+                                                    None
+                                                }
+                                            } else {
+                                                None
+                                            }
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+
+                        // Now run the script outside of the borrow
+                        if let Some(script) = script_to_run {
+                            self.run_powershell_script(&script);
+                            win32::hide_window(self.hwnd);
+                            return EventResult {
+                                needs_repaint: false,
+                                consumed: true,
+                                text_changed: false,
+                                submit: false,
+                                cancel: false,
+                            };
+                        }
+                    } else if self.listview.selected_data().is_some() {
                         return EventResult {
                             needs_repaint: false,
                             consumed: true,
@@ -814,6 +1145,129 @@ impl App {
         self.textbox.clear();
         win32::hide_window(self.hwnd);
         self.stop_cursor_timer();
+    }
+
+    /// Handle mouse move for task panel hover
+    fn handle_mouse_move(&mut self, x: f32, y: f32) -> EventResult {
+        if let Some(ref mut task_panel) = self.task_panel {
+            let old_hovered = task_panel.hovered_item;
+            task_panel.hovered_item = task_panel.hit_test(x, y);
+
+            // Repaint if hover state changed
+            if old_hovered != task_panel.hovered_item {
+                return EventResult {
+                    needs_repaint: true,
+                    consumed: true,
+                    text_changed: false,
+                    submit: false,
+                    cancel: false,
+                };
+            }
+        }
+        EventResult::none()
+    }
+
+    /// Handle mouse click for task panel
+    fn handle_mouse_click(&mut self, x: f32, y: f32) -> EventResult {
+        // Check if click is in task panel
+        if let Some(ref mut task_panel) = self.task_panel {
+            if let Some(item_idx) = task_panel.hit_test(x, y) {
+                // Get item info before mutating
+                let item_state = task_panel.item_states.get(item_idx).cloned();
+
+                if let Some(state) = item_state {
+                    if state.is_group_header {
+                        // Toggle group expansion
+                        task_panel.toggle_group(state.group_index);
+                        log!("Toggled group {} expansion", state.group_index);
+                        return EventResult {
+                            needs_repaint: true,
+                            consumed: true,
+                            text_changed: false,
+                            submit: false,
+                            cancel: false,
+                        };
+                    } else if let Some(task_idx) = state.task_index {
+                        // Run the task
+                        if let Some(group) = task_panel.config.groups.get(state.group_index) {
+                            if let Some(task) = group.tasks.get(task_idx) {
+                                let script = task.script.clone();
+                                let name = task.name.clone();
+                                log!("Running task: {} ({})", name, script);
+
+                                // Run the script
+                                if let Err(e) = self.run_powershell_script(&script) {
+                                    log!("Failed to run task {}: {:?}", name, e);
+                                }
+
+                                // Hide launcher after running task
+                                self.textbox.clear();
+                                win32::hide_window(self.hwnd);
+                                self.stop_cursor_timer();
+
+                                return EventResult {
+                                    needs_repaint: false,
+                                    consumed: true,
+                                    text_changed: false,
+                                    submit: false,
+                                    cancel: true,
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        EventResult::none()
+    }
+
+    /// Run a PowerShell script
+    fn run_powershell_script(&self, script: &str) -> Result<(), windows::core::Error> {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+
+        // Check if it's a file path or inline command
+        let result = if script.ends_with(".ps1") {
+            // Run as script file
+            Command::new("powershell")
+                .args([
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-File",
+                    script,
+                ])
+                .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+                .spawn()
+        } else {
+            // Run as inline command
+            Command::new("powershell")
+                .args([
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    script,
+                ])
+                .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+                .spawn()
+        };
+
+        match result {
+            Ok(_) => {
+                log!("Successfully ran PowerShell script: {}", script);
+                Ok(())
+            }
+            Err(e) => {
+                log!("Failed to run PowerShell script {}: {}", script, e);
+                Err(windows::core::Error::from_win32())
+            }
+        }
     }
 
     /// Launch an application
@@ -947,6 +1401,34 @@ impl App {
             self.theme_layout.mainbox_padding,
             self.theme_layout.mainbox_children
         );
+
+        // Update task panel style
+        self.task_panel_style = load_task_panel_style(&theme);
+        log!(
+            "  Updated task panel style: enabled={}, width={}, icon_size={}",
+            self.task_panel_style.enabled,
+            self.task_panel_style.width,
+            self.task_panel_style.icon_size
+        );
+
+        // Reload tasks.toml if it exists
+        if let Some(tasks_path) = find_tasks_config() {
+            let config = load_tasks_config(&tasks_path);
+            if let Some(ref mut task_panel) = self.task_panel {
+                // Preserve expanded state
+                let old_expanded = task_panel.expanded_groups.clone();
+                task_panel.config = config;
+                // Restore expanded state for existing groups
+                task_panel.expanded_groups = task_panel
+                    .config
+                    .groups
+                    .iter()
+                    .enumerate()
+                    .map(|(i, g)| old_expanded.get(i).copied().unwrap_or(g.expanded))
+                    .collect();
+                log!("  Reloaded tasks.toml");
+            }
+        }
 
         // Invalidate cached background bitmap to force reload
         self.background_bitmap = None;
@@ -1241,6 +1723,477 @@ impl App {
 
         // Pop the clip layer
         self.renderer.pop_layer();
+
+        // Draw clock overlay if enabled
+        if self.theme_layout.clock_config.enabled {
+            self.draw_clock(x, y, width, height);
+        }
+
+        // Draw task panel overlay if enabled and has tasks
+        if self.task_panel_style.enabled {
+            if let Some(ref mut task_panel) = self.task_panel {
+                if task_panel.has_tasks() {
+                    self.draw_task_panel(x, y, width, height);
+                }
+            }
+        }
+    }
+
+    /// Draw the clock overlay on the wallpaper panel
+    fn draw_clock(&mut self, panel_x: f32, panel_y: f32, panel_width: f32, panel_height: f32) {
+        use chrono::Local;
+        use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
+
+        let config = &self.theme_layout.clock_config;
+        let scale = self.layout_ctx.scale_factor;
+
+        // Get current time
+        let now = Local::now();
+        let time_str = now.format(&config.time_format).to_string();
+        let date_str = if !config.date_format.is_empty() {
+            Some(now.format(&config.date_format).to_string())
+        } else {
+            None
+        };
+
+        // Scale font sizes and offsets
+        let time_font_size = config.font_size * scale;
+        let date_font_size = config.date_font_size * scale;
+        let padding = config.padding * scale;
+        let shadow_offset_x = config.shadow_offset.0 * scale;
+        let shadow_offset_y = config.shadow_offset.1 * scale;
+
+        // Create text formats
+        let time_format =
+            match self
+                .renderer
+                .create_text_format(&config.font_family, time_font_size, true, false)
+            {
+                Ok(f) => f,
+                Err(e) => {
+                    log!("Failed to create time text format: {:?}", e);
+                    return;
+                }
+            };
+
+        // Measure time text
+        let (time_width, time_height) =
+            match self
+                .renderer
+                .measure_text(&time_str, &time_format, panel_width, panel_height)
+            {
+                Ok((w, h)) => (w, h),
+                Err(e) => {
+                    log!("Failed to measure time text: {:?}", e);
+                    return;
+                }
+            };
+
+        // Measure date text if present
+        let (date_width, date_height, date_format) = if let Some(ref date) = date_str {
+            let fmt = match self.renderer.create_text_format(
+                &config.font_family,
+                date_font_size,
+                false,
+                false,
+            ) {
+                Ok(f) => f,
+                Err(e) => {
+                    log!("Failed to create date text format: {:?}", e);
+                    return;
+                }
+            };
+            let (w, h) = match self
+                .renderer
+                .measure_text(date, &fmt, panel_width, panel_height)
+            {
+                Ok((w, h)) => (w, h),
+                Err(e) => {
+                    log!("Failed to measure date text: {:?}", e);
+                    return;
+                }
+            };
+            (w, h, Some(fmt))
+        } else {
+            (0.0, 0.0, None)
+        };
+
+        // Calculate total content size
+        let total_width = time_width.max(date_width);
+        let spacing = if date_str.is_some() { 4.0 * scale } else { 0.0 };
+        let total_height = time_height + spacing + date_height;
+
+        // Calculate position based on alignment
+        let h_align = config.position.horizontal_align();
+        let v_align = config.position.vertical_align();
+
+        // Available space for positioning (panel minus padding)
+        let avail_width = panel_width - 2.0 * padding;
+        let avail_height = panel_height - 2.0 * padding;
+
+        // Calculate top-left corner of the clock content block
+        let content_x = panel_x + padding + (avail_width - total_width) * h_align;
+        let content_y = panel_y + padding + (avail_height - total_height) * v_align;
+
+        // Time text rect (centered horizontally within content block)
+        let time_x = content_x + (total_width - time_width) / 2.0;
+        let time_rect = D2D_RECT_F {
+            left: time_x,
+            top: content_y,
+            right: time_x + time_width,
+            bottom: content_y + time_height,
+        };
+
+        // Shadow rect (offset)
+        let time_shadow_rect = D2D_RECT_F {
+            left: time_rect.left + shadow_offset_x,
+            top: time_rect.top + shadow_offset_y,
+            right: time_rect.right + shadow_offset_x,
+            bottom: time_rect.bottom + shadow_offset_y,
+        };
+
+        // Draw time shadow
+        let _ = self.renderer.draw_text(
+            &time_str,
+            &time_format,
+            time_shadow_rect,
+            config.shadow_color,
+        );
+
+        // Draw time text
+        let _ = self
+            .renderer
+            .draw_text(&time_str, &time_format, time_rect, config.text_color);
+
+        // Draw date if present
+        if let (Some(date), Some(ref date_fmt)) = (date_str, date_format) {
+            let date_x = content_x + (total_width - date_width) / 2.0;
+            let date_y = content_y + time_height + spacing;
+            let date_rect = D2D_RECT_F {
+                left: date_x,
+                top: date_y,
+                right: date_x + date_width,
+                bottom: date_y + date_height,
+            };
+
+            // Shadow rect
+            let date_shadow_rect = D2D_RECT_F {
+                left: date_rect.left + shadow_offset_x,
+                top: date_rect.top + shadow_offset_y,
+                right: date_rect.right + shadow_offset_x,
+                bottom: date_rect.bottom + shadow_offset_y,
+            };
+
+            // Draw date shadow
+            let _ = self
+                .renderer
+                .draw_text(&date, date_fmt, date_shadow_rect, config.shadow_color);
+
+            // Draw date text
+            let _ = self
+                .renderer
+                .draw_text(&date, date_fmt, date_rect, config.text_color);
+        }
+    }
+
+    /// Draw the task panel overlay on the wallpaper panel
+    fn draw_task_panel(&mut self, panel_x: f32, panel_y: f32, panel_width: f32, panel_height: f32) {
+        use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
+
+        let scale = self.layout_ctx.scale_factor;
+        let style = &self.task_panel_style;
+
+        // Get task panel from self (we need to work with references carefully)
+        let task_panel = match self.task_panel.as_mut() {
+            Some(tp) => tp,
+            None => return,
+        };
+
+        // Scale dimensions
+        let panel_width_scaled = style.width * scale;
+        let padding = style.padding * scale;
+        let icon_size = style.icon_size * scale;
+        let group_spacing = style.group_spacing * scale;
+        let task_spacing = style.task_spacing * scale;
+        let border_radius = style.border_radius * scale;
+
+        // Calculate panel position based on style.position
+        let panel_left = match style.position {
+            TaskPanelPosition::Left => panel_x + padding,
+            TaskPanelPosition::Right => panel_x + panel_width - panel_width_scaled - padding,
+        };
+        let panel_top = panel_y + padding;
+        let panel_content_height = panel_height - 2.0 * padding;
+
+        // Store panel bounds for hit-testing
+        task_panel.panel_bounds = Rect::new(
+            panel_left,
+            panel_top,
+            panel_width_scaled,
+            panel_content_height,
+        );
+
+        // Draw panel background
+        let bg_rect = D2D_RECT_F {
+            left: panel_left,
+            top: panel_top,
+            right: panel_left + panel_width_scaled,
+            bottom: panel_top + panel_content_height,
+        };
+        let _ = self.renderer.fill_rounded_rect(
+            bg_rect,
+            border_radius,
+            border_radius,
+            style.background_color,
+        );
+
+        // Create icon text format
+        let icon_format =
+            match self
+                .renderer
+                .create_text_format(&style.font_family, icon_size, false, false)
+            {
+                Ok(f) => f,
+                Err(e) => {
+                    log!("Failed to create task panel icon format: {:?}", e);
+                    return;
+                }
+            };
+
+        // Clear previous item states
+        task_panel.item_states.clear();
+
+        // Draw groups and tasks
+        let mut y = panel_top + padding;
+        let center_x = panel_left + panel_width_scaled / 2.0;
+
+        // We need to clone the data we need since we can't borrow task_panel mutably while iterating
+        let groups: Vec<_> = task_panel.config.groups.iter().cloned().collect();
+        let expanded: Vec<_> = task_panel.expanded_groups.clone();
+        let hovered = task_panel.hovered_item;
+        let selected = task_panel.selected_item;
+        let is_focused = task_panel.focused;
+
+        // Circle background colors
+        let circle_bg_normal = Color::from_f32(1.0, 1.0, 1.0, 0.1);
+        let circle_bg_hover = Color::from_f32(1.0, 1.0, 1.0, 0.25);
+        let circle_radius = icon_size / 2.0 + 4.0 * scale; // Slightly larger than icon
+        let circle_diameter = circle_radius * 2.0;
+
+        for (group_idx, group) in groups.iter().enumerate() {
+            let is_expanded = expanded.get(group_idx).copied().unwrap_or(false);
+
+            // Calculate circle center position
+            let icon_center_x = center_x;
+            let icon_center_y = y + circle_radius;
+
+            // Check if this group header is hovered or selected
+            let item_index = task_panel.item_states.len();
+            let is_hovered = hovered == Some(item_index);
+            let is_selected = is_focused && selected == Some(item_index);
+
+            // Draw circular background
+            let circle_color = if is_hovered || is_selected {
+                circle_bg_hover
+            } else {
+                circle_bg_normal
+            };
+            let _ = self.renderer.fill_circle(
+                icon_center_x,
+                icon_center_y,
+                circle_radius,
+                circle_color,
+            );
+
+            let group_color = if is_hovered || is_selected {
+                style.icon_color_hover
+            } else {
+                style.group_icon_color
+            };
+
+            // Draw group icon centered in circle
+            let icon_rect = D2D_RECT_F {
+                left: icon_center_x - circle_radius,
+                top: icon_center_y - circle_radius,
+                right: icon_center_x + circle_radius,
+                bottom: icon_center_y + circle_radius,
+            };
+            let _ =
+                self.renderer
+                    .draw_text_centered(&group.icon, &icon_format, icon_rect, group_color);
+
+            // Store item state for hit-testing (use circle bounds)
+            task_panel.item_states.push(TaskItemState {
+                group_index: group_idx,
+                task_index: None,
+                bounds: Rect::new(
+                    icon_center_x - circle_radius,
+                    icon_center_y - circle_radius,
+                    circle_diameter,
+                    circle_diameter,
+                ),
+                is_group_header: true,
+            });
+
+            y += circle_diameter + task_spacing;
+
+            // Draw tasks if expanded
+            if is_expanded {
+                for (task_idx, task) in group.tasks.iter().enumerate() {
+                    // Calculate circle center position
+                    let task_center_x = center_x;
+                    let task_center_y = y + circle_radius;
+
+                    // Check if this task is hovered or selected
+                    let item_index = task_panel.item_states.len();
+                    let is_hovered = hovered == Some(item_index);
+                    let is_selected = is_focused && selected == Some(item_index);
+
+                    // Draw circular background
+                    let circle_color = if is_hovered || is_selected {
+                        circle_bg_hover
+                    } else {
+                        circle_bg_normal
+                    };
+                    let _ = self.renderer.fill_circle(
+                        task_center_x,
+                        task_center_y,
+                        circle_radius,
+                        circle_color,
+                    );
+
+                    let task_color = if is_hovered || is_selected {
+                        style.icon_color_hover
+                    } else {
+                        style.icon_color
+                    };
+
+                    // Draw task icon centered in circle
+                    let task_rect = D2D_RECT_F {
+                        left: task_center_x - circle_radius,
+                        top: task_center_y - circle_radius,
+                        right: task_center_x + circle_radius,
+                        bottom: task_center_y + circle_radius,
+                    };
+                    let _ = self.renderer.draw_text_centered(
+                        &task.icon,
+                        &icon_format,
+                        task_rect,
+                        task_color,
+                    );
+
+                    // Store item state for hit-testing (use circle bounds)
+                    task_panel.item_states.push(TaskItemState {
+                        group_index: group_idx,
+                        task_index: Some(task_idx),
+                        bounds: Rect::new(
+                            task_center_x - circle_radius,
+                            task_center_y - circle_radius,
+                            circle_diameter,
+                            circle_diameter,
+                        ),
+                        is_group_header: false,
+                    });
+
+                    y += circle_diameter + task_spacing;
+                }
+            }
+
+            y += group_spacing - task_spacing; // Extra spacing between groups
+        }
+
+        // Draw tooltip if hovering over an item OR if panel is focused with keyboard selection
+        // Collect tooltip data first to avoid borrow conflicts
+        let tooltip_idx = if let Some(hovered_idx) = task_panel.hovered_item {
+            // Mouse hover takes priority
+            Some(hovered_idx)
+        } else if task_panel.focused {
+            // When focused, show tooltip for keyboard-selected item
+            task_panel.selected_item
+        } else {
+            None
+        };
+
+        let tooltip_data: Option<(String, f32, f32)> = if let Some(idx) = tooltip_idx {
+            if let Some((group, task)) = task_panel.get_task_at_index(idx) {
+                let tooltip_text = if let Some(t) = task {
+                    t.name.clone()
+                } else {
+                    group.name.clone()
+                };
+
+                if let Some(item_state) = task_panel.item_states.get(idx) {
+                    Some((
+                        tooltip_text,
+                        item_state.bounds.x + item_state.bounds.width + 4.0 * scale,
+                        item_state.bounds.y,
+                    ))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Now draw tooltip without holding task_panel borrow
+        if let Some((text, x, y)) = tooltip_data {
+            self.draw_tooltip(&text, x, y, scale);
+        }
+    }
+
+    /// Draw a tooltip near the given position
+    fn draw_tooltip(&mut self, text: &str, x: f32, y: f32, scale: f32) {
+        use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
+
+        let font_size = 12.0 * scale;
+        let padding = 8.0 * scale; // Increased padding for better appearance
+        let bg_color = Color::from_f32(0.1, 0.1, 0.1, 0.95);
+        let text_color = Color::WHITE;
+
+        let text_format = match self.renderer.create_text_format(
+            &self.task_panel_style.font_family,
+            font_size,
+            false,
+            false,
+        ) {
+            Ok(f) => f,
+            Err(_) => return,
+        };
+
+        // Measure text - use large max width to prevent wrapping
+        let (text_width, text_height) =
+            match self
+                .renderer
+                .measure_text(text, &text_format, 500.0 * scale, 50.0 * scale)
+            {
+                Ok((w, h)) => (w, h),
+                Err(_) => return,
+            };
+
+        // Draw background
+        let bg_rect = D2D_RECT_F {
+            left: x,
+            top: y,
+            right: x + text_width + 2.0 * padding,
+            bottom: y + text_height + 2.0 * padding,
+        };
+        let _ = self
+            .renderer
+            .fill_rounded_rect(bg_rect, 4.0 * scale, 4.0 * scale, bg_color);
+
+        // Draw text
+        let text_rect = D2D_RECT_F {
+            left: x + padding,
+            top: y + padding,
+            right: x + padding + text_width,
+            bottom: y + padding + text_height,
+        };
+        let _ = self
+            .renderer
+            .draw_text(text, &text_format, text_rect, text_color);
     }
 
     /// Draw the right panel with solid color and per-corner radii
@@ -1418,6 +2371,7 @@ impl App {
             win32::hide_window(self.hwnd);
             self.stop_cursor_timer();
             self.stop_animation_timer();
+            self.stop_clock_timer();
             self.animator.clear();
             log!("  Window hidden");
         } else {
@@ -1450,6 +2404,7 @@ impl App {
             self.renderer.mark_dirty();
 
             // Start fade-in animation
+            // Note: Clock timer is started after animation completes to avoid flicker
             self.animator.start_fade_in();
             self.start_animation_timer();
             log!("  Started fade-in animation");

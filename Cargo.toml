@@ -10,6 +10,9 @@ logos = "0.14"
 lalrpop-util = { version = "0.20", features = ["lexer"] }
 dirs = "5.0"
 thiserror = "1.0"
+chrono = "0.4"
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }
 
 [dependencies.windows]
 version = "0.58"
@@ -37,6 +40,9 @@ features = [
 
 [build-dependencies]
 lalrpop = "0.20"
+
+[dev-dependencies]
+tempfile = "3.19"
 
 [profile.release]
 lto = true

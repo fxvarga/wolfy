@@ -13,14 +13,14 @@
 
 /* Main window */
 window {
-    width: 928;
-    height: 480;
-    background-color: #262335cc;  /* Window tint - 80% opacity dark purple */
+    width: 1200;
+    height: 600;
+    background-color: #2623352c;  /* Window tint - 80% opacity dark purple */
     border-radius: 16;
     border-color: #f97e72;
     /* Hotkey to toggle window (default: alt+space) */
     /* Options: ctrl+space, alt+space, ctrl+a through ctrl+z, alt+a through alt+z, ctrl+0 through ctrl+9, alt+0 through alt+9 */
-    hotkey: "ctrl+space";
+    hotkey: "ctrl+0";
     /* Animation settings */
     animation-duration: 200;      /* Fade-in duration in milliseconds */
     animation-easing: ease-out-expo;  /* Options: linear, ease, ease-in, ease-out, ease-in-out, ease-out-cubic, ease-out-quart, ease-out-expo, ease-out-back */
@@ -31,7 +31,7 @@ mainbox {
     orientation: horizontal;
     children: [ "wallpaper-panel", "listbox" ];
     spacing: 0;
-    padding: 12;
+    padding: 30;
     background-color: transparent;  /* Let window tint show through */
 }
 
@@ -40,12 +40,26 @@ wallpaper-panel {
     background-image: url("auto", width);
     background-color: transparent;  /* No overlay on wallpaper */
     expand: false;
-    width: 456;
+    width: 600;
     border-radius: 16;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
-    diagonal-edge: 150;  /* Slanted edge offset - creates diagonal from (right, top) to (right-150, bottom) */
-    fade-width: 80;      /* Width of the feathered fade along the diagonal edge */
+    diagonal-edge: 60;  /* Slanted edge offset - creates diagonal from (right, top) to (right-150, bottom) */
+    fade-width: 60;      /* Width of the feathered fade along the diagonal edge */
+ 
+    /* Clock overlay settings */
+    clock-enabled: true;
+    clock-position: middle-center;       /* top-left, top-center, top-right, middle-left, middle-center, middle-right, bottom-left, bottom-center, bottom-right */
+    clock-format: "%H:%M:%S";        /* strftime format - 12h: "%I:%M %p", 24h: "%H:%M" or "%H:%M:%S" */
+    clock-date-format: "%a, %b %d";  /* Date format below time - empty string to hide */
+    clock-font-family: "Segoe UI";
+    clock-font-size: 48;             /* Large bold time */
+    clock-date-font-size: 16;        /* Smaller date */
+    clock-text-color: #ffffffee;     /* White with slight transparency */
+    clock-shadow-color: #00000080;   /* 50% black shadow */
+    clock-shadow-offset-x: 2;
+    clock-shadow-offset-y: 2;
+    clock-padding: 20;               /* Distance from panel edges */
 }
 
 /* Right panel - search box and results */
@@ -53,7 +67,7 @@ listbox {
     orientation: vertical;
     children: [ "dummy", "listview", "dummy" ];
     spacing: 0;
-    expand: true;
+    expand: false;
     background-color: #262335e6;  /* 90% opacity - nearly opaque */
     padding-top: 0;
     padding-right: 0;
@@ -100,12 +114,12 @@ listview {
     text-color: #ff7edb;
     border-width: 0;
     border-radius: 0;
-    padding-top: 16;
-    padding-right: 32;
+    padding-top: 20;
+    padding-right: 10;
     padding-bottom: 16;
-    padding-left: 32;
-    spacing: 0;
-    lines: 8;
+    padding-left: 12;
+    spacing: 20;
+    lines: 7;
     scrollbar-width: 0;
     scrollbar-color: #ff7edb40;
     scrollbar-track-color: transparent;
@@ -116,14 +130,14 @@ element {
     background-color: transparent;
     text-color: #ff7edb;
     subtext-color: #ff7edb80;
-    font-size: 14;
+    font-size: 18;
     font-family: "JetBrainsMono Nerd Font";
     subtext-font-size: 11;
     padding-horizontal: 24;
     padding-vertical: 8;
-    icon-size: 35;
+    icon-size: 25;
     icon-spacing: 16;
-    height: 48;
+    height: 50;
     border-radius: 8;
 }
 
@@ -140,4 +154,21 @@ element.hover {
 dummy {
     background-color: transparent;
     expand: true;
+}
+
+/* Task panel - quick-launch tasks overlaid on wallpaper panel */
+task-panel {
+    enabled: true;
+    position: left;                /* left or right within wallpaper panel */
+    width: 64;                     /* Wider to fit circular icon backgrounds */
+    background-color: #00000050;   /* Semi-transparent dark background */
+    icon-color: #cdd6f4;           /* Default icon color */
+    icon-color-hover: #89b4fa;     /* Icon color on hover */
+    group-icon-color: #f97e72;     /* Group header icon color */
+    font-family: "JetBrainsMono Nerd Font";
+    icon-size: 24;
+    padding: 16;
+    group-spacing: 20;             /* Space between groups */
+    task-spacing: 10;              /* Space between tasks within a group */
+    border-radius: 8;
 }

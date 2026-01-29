@@ -1,0 +1,37 @@
+# Wolfy Task Panel Configuration
+# Quick-launch PowerShell scripts organized by groups
+
+[settings]
+position = "left"
+
+# Development tools group
+[[groups]]
+name = "Dev"
+icon = ""
+expanded = true
+tasks = [
+    { name = "Start Docker", icon = "", script = "Start-Service docker" },
+    { name = "Open VS Code", icon = "󰨞", script = "code ." },
+    { name = "Open Terminal", icon = "", script = "wt" },
+]
+
+# System utilities group
+[[groups]]
+name = "System"
+icon = ""
+expanded = false
+tasks = [
+    { name = "Disk Cleanup", icon = "", script = "cleanmgr" },
+    { name = "Task Manager", icon = "", script = "taskmgr" },
+    { name = "System Info", icon = "", script = "msinfo32" },
+]
+
+# Network tools group
+[[groups]]
+name = "Network"
+icon = ""
+expanded = false
+tasks = [
+    { name = "Flush DNS", icon = "", script = "ipconfig /flushdns" },
+    { name = "Network Status", icon = "󰛳", script = "netstat -an | Out-GridView" },
+]

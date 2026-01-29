@@ -133,8 +133,35 @@ pub fn discover_all_apps(history: Option<&History>) -> Vec<AppEntry> {
     // Sort by history (frequency) then alphabetically
     sort_apps(&mut apps, history);
 
+    // Filter out WSLg apps (e.g., "App Name (Ubuntu)", "App Name (Arch Linux)")
+    apps.retain(|app| !is_wslg_app(&app.name));
+
     log!("Total apps after dedup and sort: {}", apps.len());
     apps
+}
+
+/// Check if an app name indicates a WSLg (Windows Subsystem for Linux GUI) app
+/// These typically have a Linux distro name in parentheses at the end
+fn is_wslg_app(name: &str) -> bool {
+    let name_lower = name.to_lowercase();
+    // Common WSL distro patterns
+    name_lower.ends_with("(ubuntu)")
+        || name_lower.ends_with("(ubuntu-22.04)")
+        || name_lower.ends_with("(ubuntu-24.04)")
+        || name_lower.ends_with("(debian)")
+        || name_lower.ends_with("(arch)")
+        || name_lower.ends_with("(archlinux)")
+        || name_lower.ends_with("(arch linux)")
+        || name_lower.ends_with("(fedora)")
+        || name_lower.ends_with("(opensuse)")
+        || name_lower.ends_with("(kali)")
+        || name_lower.ends_with("(kali-linux)")
+        || name_lower.contains("(ubuntu")
+        || name_lower.contains("(debian")
+        || name_lower.contains("(arch")
+        || name_lower.contains("(fedora")
+        || name_lower.contains("(opensuse")
+        || name_lower.contains("(kali")
 }
 
 /// Sort apps by usage frequency (descending) then alphabetically

@@ -8,11 +8,13 @@
 //! - Known containers have default children if not specified in theme
 
 pub mod base;
+pub mod clock;
 pub mod container;
 pub mod element;
 pub mod factory;
 pub mod listview;
 pub mod panel;
+pub mod taskpanel;
 pub mod textbox;
 
 use crate::platform::win32::Renderer;
@@ -21,11 +23,13 @@ use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageSource, LayoutContext, Rect};
 
 pub use base::{ArrangedBounds, Constraints, CornerRadii, LayoutProps, MeasuredSize, Size};
+pub use clock::{ClockConfig, ClockPosition};
 pub use container::{Container, ContainerStyle};
 pub use element::{Element, ElementData, ElementStyle};
 pub use factory::{UITree, WidgetFactory, WidgetNode, WidgetType};
 pub use listview::{ListView, ListViewStyle};
 pub use panel::{Panel, PanelStyle};
+pub use taskpanel::{TaskPanelState, TaskPanelStyle};
 pub use textbox::Textbox;
 
 /// Widget rendering state

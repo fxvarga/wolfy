@@ -532,6 +532,43 @@ impl Renderer {
         Ok(())
     }
 
+    /// Fill an ellipse (circle if radius_x == radius_y)
+    pub fn fill_ellipse(
+        &mut self,
+        center_x: f32,
+        center_y: f32,
+        radius_x: f32,
+        radius_y: f32,
+        color: Color,
+    ) -> Result<(), Error> {
+        let brush = self.get_brush(color)?;
+        let ellipse = D2D1_ELLIPSE {
+            point: D2D_POINT_2F {
+                x: center_x,
+                y: center_y,
+            },
+            radiusX: radius_x,
+            radiusY: radius_y,
+        };
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                target.FillEllipse(&ellipse, &brush);
+            }
+        }
+        Ok(())
+    }
+
+    /// Fill a circle
+    pub fn fill_circle(
+        &mut self,
+        center_x: f32,
+        center_y: f32,
+        radius: f32,
+        color: Color,
+    ) -> Result<(), Error> {
+        self.fill_ellipse(center_x, center_y, radius, radius, color)
+    }
+
     /// Draw a rounded rectangle outline
     pub fn draw_rounded_rect(
         &mut self,
@@ -1171,6 +1208,30 @@ impl Renderer {
             }
         }
         Ok(())
+    }
+
+    /// Draw text centered within a rect
+    pub fn draw_text_centered(
+        &mut self,
+        text: &str,
+        format: &IDWriteTextFormat,
+        rect: D2D_RECT_F,
+        color: Color,
+    ) -> Result<(), Error> {
+        // Measure text first
+        let rect_width = rect.right - rect.left;
+        let rect_height = rect.bottom - rect.top;
+        let (text_width, text_height) = self.measure_text(text, format, rect_width, rect_height)?;
+
+        // Calculate centered position
+        let centered_rect = D2D_RECT_F {
+            left: rect.left + (rect_width - text_width) / 2.0,
+            top: rect.top + (rect_height - text_height) / 2.0,
+            right: rect.right,
+            bottom: rect.bottom,
+        };
+
+        self.draw_text(text, format, centered_rect, color)
     }
 
     /// Measure text dimensions

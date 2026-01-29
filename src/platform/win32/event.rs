@@ -187,6 +187,14 @@ pub struct Modifiers {
     pub alt: bool,
 }
 
+/// Mouse button
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+}
+
 impl Modifiers {
     /// Get current modifier state from Windows
     pub fn current() -> Self {
@@ -230,6 +238,12 @@ pub enum Event {
     Char(char),
     /// Global hotkey triggered
     Hotkey(i32),
+    /// Mouse button pressed
+    MouseDown { x: i32, y: i32, button: MouseButton },
+    /// Mouse button released
+    MouseUp { x: i32, y: i32, button: MouseButton },
+    /// Mouse moved
+    MouseMove { x: i32, y: i32 },
     /// Window needs repainting
     Paint,
     /// Window received focus
@@ -279,6 +293,65 @@ pub fn translate_message(_hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) 
         WM_HOTKEY => {
             let id = wparam.0 as i32;
             Some(Event::Hotkey(id))
+        }
+        WM_LBUTTONDOWN => {
+            let x = (lparam.0 & 0xFFFF) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            Some(Event::MouseDown {
+                x,
+                y,
+                button: MouseButton::Left,
+            })
+        }
+        WM_LBUTTONUP => {
+            let x = (lparam.0 & 0xFFFF) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            Some(Event::MouseUp {
+                x,
+                y,
+                button: MouseButton::Left,
+            })
+        }
+        WM_RBUTTONDOWN => {
+            let x = (lparam.0 & 0xFFFF) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            Some(Event::MouseDown {
+                x,
+                y,
+                button: MouseButton::Right,
+            })
+        }
+        WM_RBUTTONUP => {
+            let x = (lparam.0 & 0xFFFF) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            Some(Event::MouseUp {
+                x,
+                y,
+                button: MouseButton::Right,
+            })
+        }
+        WM_MBUTTONDOWN => {
+            let x = (lparam.0 & 0xFFFF) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            Some(Event::MouseDown {
+                x,
+                y,
+                button: MouseButton::Middle,
+            })
+        }
+        WM_MBUTTONUP => {
+            let x = (lparam.0 & 0xFFFF) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            Some(Event::MouseUp {
+                x,
+                y,
+                button: MouseButton::Middle,
+            })
+        }
+        WM_MOUSEMOVE => {
+            let x = (lparam.0 & 0xFFFF) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            Some(Event::MouseMove { x, y })
         }
         WM_PAINT => Some(Event::Paint),
         WM_SETFOCUS => Some(Event::FocusGained),

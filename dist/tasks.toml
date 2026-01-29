@@ -1,0 +1,38 @@
+# Wolfy Task Panel Configuration
+# Quick-launch PowerShell scripts organized by groups
+# Icons use Unicode escapes: \uXXXX for BMP, \U00XXXXXX for extended
+
+[settings]
+position = "left"
+
+# Development tools group
+[[groups]]
+name = "Dev"
+icon = "\uf121"
+expanded = true
+tasks = [
+    { name = "Start Docker", icon = "\uf308", script = "Start-Service docker" },
+    { name = "Open VS Code", icon = "\U000F0A1E", script = "code ." },
+    { name = "Open Terminal", icon = "\uf120", script = "wt" },
+]
+
+# System utilities group
+[[groups]]
+name = "System"
+icon = "\uf013"
+expanded = false
+tasks = [
+    { name = "Disk Cleanup", icon = "\uf1f8", script = "cleanmgr" },
+    { name = "Task Manager", icon = "\uf0ae", script = "taskmgr" },
+    { name = "System Info", icon = "\uf05a", script = "msinfo32" },
+]
+
+# Network tools group
+[[groups]]
+name = "Network"
+icon = "\uf6ff"
+expanded = false
+tasks = [
+    { name = "Flush DNS", icon = "\uf1eb", script = "ipconfig /flushdns" },
+    { name = "Network Status", icon = "\U000F06A9", script = "netstat -an | Out-GridView" },
+]

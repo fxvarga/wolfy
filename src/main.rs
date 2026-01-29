@@ -14,6 +14,7 @@ mod animation;
 mod app;
 mod history;
 mod platform;
+mod tasks;
 mod theme;
 mod widget;
 
