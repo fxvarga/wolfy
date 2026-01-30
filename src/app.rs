@@ -1825,10 +1825,8 @@ Clear-Host
 
     /// Open a tail terminal for a running task to see live output
     fn open_task_tail(&self, group: &str, name: &str) -> Result<(), windows::core::Error> {
-        use std::os::windows::process::CommandExt;
-        use std::process::Command;
-
-        const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+        use std::fs::File;
+        use std::io::Write;
 
         let output_file = self.task_runner.get_output_file(group, name);
         let file_path = output_file.display().to_string();
@@ -1840,67 +1838,75 @@ Clear-Host
             file_path
         );
 
-        // PowerShell command to tail the file with centering
-        // Uses Get-Content -Wait -Tail to show live output
+        // Build a simpler PowerShell script for tailing
+        // Use escape sequences for quotes to avoid shell escaping issues
+        let escaped_path = file_path.replace("'", "''"); // Escape single quotes for PS
         let tail_script = format!(
-            r#"Add-Type -Name W -Namespace N -MemberDefinition '[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out RECT r);[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int h,bool r);[DllImport("kernel32.dll")]public static extern IntPtr GetConsoleWindow();public struct RECT{{public int L,T,R,B;}}'
-Add-Type -AssemblyName System.Windows.Forms
-$h=[N.W]::GetConsoleWindow()
-[N.W]::ShowWindow($h,0)|Out-Null
-$Host.UI.RawUI.WindowSize=New-Object System.Management.Automation.Host.Size(100,25)
-$Host.UI.RawUI.BufferSize=New-Object System.Management.Automation.Host.Size(100,3000)
-$Host.UI.RawUI.WindowTitle='Task: {} - {}'
-$r=New-Object N.W+RECT;[N.W]::GetWindowRect($h,[ref]$r)|Out-Null
-$ww=$r.R-$r.L;$wh=$r.B-$r.T
-$sw=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Width
-$sh=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height
-[N.W]::MoveWindow($h,[int](($sw-$ww)/2),[int](($sh-$wh)/2),$ww,$wh,$false)|Out-Null
-[N.W]::ShowWindow($h,1)|Out-Null
-Clear-Host
-Write-Host "=== Live output for task: {} ===" -ForegroundColor Cyan
-Write-Host ""
+            r#"$Host.UI.RawUI.WindowTitle = 'Task: {} - {}'
+Write-Host '=== Live output for task: {} ===' -ForegroundColor Cyan
+Write-Host ''
 Get-Content -Path '{}' -Wait -Tail 50"#,
-            group, name, name, file_path
+            group.replace("'", "''"),
+            name.replace("'", "''"),
+            name.replace("'", "''"),
+            escaped_path
         );
 
-        // Try Windows Terminal first
-        let result = Command::new("wt")
-            .arg("new-tab")
-            .arg("--")
-            .arg("powershell")
-            .arg("-ExecutionPolicy")
-            .arg("Bypass")
-            .arg("-NoExit")
-            .arg("-Command")
-            .arg(&tail_script)
-            .spawn();
+        // Write script to a temp file to avoid command line length and escaping issues
+        let temp_dir = std::env::temp_dir();
+        let script_path = temp_dir.join("wolfy_tail_script.ps1");
 
-        if result.is_ok() {
-            log!("Opened tail in Windows Terminal");
-            return Ok(());
+        if let Ok(mut file) = File::create(&script_path) {
+            if let Err(e) = file.write_all(tail_script.as_bytes()) {
+                log!("Failed to write temp script: {}", e);
+                return Err(windows::core::Error::from_win32());
+            }
+        } else {
+            log!("Failed to create temp script file");
+            return Err(windows::core::Error::from_win32());
         }
 
-        // Fall back to PowerShell directly
-        log!("Windows Terminal not found, falling back to PowerShell");
-        let result = Command::new("powershell")
-            .arg("-ExecutionPolicy")
-            .arg("Bypass")
-            .arg("-NoExit")
-            .arg("-Command")
-            .arg(&tail_script)
-            .creation_flags(CREATE_NEW_CONSOLE)
-            .spawn();
+        let script_path_str = script_path.display().to_string();
+        log!("Created temp script at: {}", script_path_str);
 
-        match result {
-            Ok(_) => {
-                log!("Opened tail in PowerShell");
-                Ok(())
+        // Spawn the terminal in a separate thread to avoid re-entrancy issues
+        // Windows Terminal's COM activation can send messages back to our window,
+        // which would cause a RefCell borrow conflict
+        std::thread::spawn(move || {
+            use std::os::windows::process::CommandExt;
+            use std::process::Command;
+
+            const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+
+            // Try Windows Terminal first
+            let result = Command::new("wt")
+                .arg("new-tab")
+                .arg("--")
+                .arg("powershell")
+                .arg("-ExecutionPolicy")
+                .arg("Bypass")
+                .arg("-NoExit")
+                .arg("-File")
+                .arg(&script_path_str)
+                .spawn();
+
+            if result.is_ok() {
+                return;
             }
-            Err(e) => {
-                log!("Failed to open tail terminal: {}", e);
-                Err(windows::core::Error::from_win32())
-            }
-        }
+
+            // Fall back to PowerShell directly
+            let _ = Command::new("powershell")
+                .arg("-ExecutionPolicy")
+                .arg("Bypass")
+                .arg("-NoExit")
+                .arg("-File")
+                .arg(&script_path_str)
+                .creation_flags(CREATE_NEW_CONSOLE)
+                .spawn();
+        });
+
+        log!("Spawned tail terminal in background thread");
+        Ok(())
     }
 
     /// Launch an application
