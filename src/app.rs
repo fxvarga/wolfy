@@ -2871,6 +2871,9 @@ impl App {
 
             y += group_spacing;
         }
+
+        // Apply any pending selection now that item_states is populated
+        task_panel.apply_pending_selection();
     }
 
     /// Draw a tooltip near the given position

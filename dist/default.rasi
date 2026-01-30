@@ -64,8 +64,8 @@ wallpaper-panel {
     border-radius: 16;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
-    diagonal-edge: 60;  /* Slanted edge offset - creates diagonal from (right, top) to (right-150, bottom) */
-    fade-width: 60;      /* Width of the feathered fade along the diagonal edge */
+    diagonal-edge: 100;  /* Slanted edge offset - creates diagonal from (right, top) to (right-150, bottom) */
+    fade-width: 0;      /* Width of the feathered fade along the diagonal edge */
  
     /* Clock overlay settings */
     clock-enabled: true;
@@ -150,15 +150,15 @@ element {
     background-color: transparent;
     text-color: #ff7edb;
     subtext-color: #ff7edb80;
-    font-size: 18;
+    font-size: 24;
     font-family: "JetBrainsMono Nerd Font";
     subtext-font-size: 11;
     padding-horizontal: 24;
     padding-vertical: 8;
     icon-size: 25;
     icon-spacing: 16;
-    height: 50;
-    border-radius: 8;
+    height: 60;
+    border-radius: 12;
 }
 
 element:selected {
@@ -200,17 +200,17 @@ task-panel {
     /* Typography */
     icon-font-family: "JetBrainsMono Nerd Font";
     text-font-family: "JetBrainsMono Nerd Font";
-    icon-size: 15;
-    text-size: 12;
+    icon-size: 22;
+    text-size: 15;
 
     /* Layout */
-    item-height: 42;
+    item-height: 55;
     item-corner-radius: 10;
     padding: 10;
-    group-spacing: 10;
+    group-spacing: 0;
     item-spacing: 4;
     border-radius: 10;
-    sub-item-indent: 34;
+    sub-item-indent: 30;
 
     /* ASCII tree drawing characters */
     chevron-collapsed: ">";

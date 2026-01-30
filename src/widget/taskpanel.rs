@@ -26,6 +26,8 @@ pub struct TaskPanelState {
     pub item_states: Vec<TaskItemState>,
     /// Panel bounds (calculated during layout)
     pub panel_bounds: Rect,
+    /// Pending selection: group index to select first task from after next render
+    pub pending_select_first_task_in_group: Option<usize>,
 }
 
 impl TaskPanelState {
@@ -43,6 +45,7 @@ impl TaskPanelState {
             expanded: false,
             item_states: Vec::new(),
             panel_bounds: Rect::default(),
+            pending_select_first_task_in_group: None,
         }
     }
 
@@ -57,6 +60,7 @@ impl TaskPanelState {
     }
 
     /// Toggle a group's expanded state (accordion: only one open at a time)
+    /// When opening a group, selects the first task in that group
     pub fn toggle_group(&mut self, group_index: usize) {
         if group_index < self.expanded_groups.len() {
             let is_currently_expanded = self.expanded_groups[group_index];
@@ -70,6 +74,21 @@ impl TaskPanelState {
             // If it was already open, it stays closed (we just closed everything)
             if !is_currently_expanded {
                 self.expanded_groups[group_index] = true;
+                // Mark that we want to select the first task after render
+                self.pending_select_first_task_in_group = Some(group_index);
+            }
+        }
+    }
+
+    /// Apply pending selection (call after item_states is populated)
+    pub fn apply_pending_selection(&mut self) {
+        if let Some(group_index) = self.pending_select_first_task_in_group.take() {
+            // Find the first task item for this group (not the header)
+            for (idx, item_state) in self.item_states.iter().enumerate() {
+                if item_state.group_index == group_index && !item_state.is_group_header {
+                    self.selected_item = Some(idx);
+                    break;
+                }
             }
         }
     }
