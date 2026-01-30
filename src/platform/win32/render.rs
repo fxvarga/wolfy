@@ -1264,6 +1264,49 @@ impl Renderer {
         Ok(())
     }
 
+    /// Draw text right-aligned within a rect
+    pub fn draw_text_right_aligned(
+        &mut self,
+        text: &str,
+        format: &IDWriteTextFormat,
+        rect: D2D_RECT_F,
+        color: Color,
+    ) -> Result<(), Error> {
+        use windows::Win32::Graphics::DirectWrite::DWRITE_TEXT_ALIGNMENT_TRAILING;
+
+        let brush = self.get_brush(color)?;
+        let text_wide: Vec<u16> = text.encode_utf16().collect();
+
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                let rect_width = rect.right - rect.left;
+                let rect_height = rect.bottom - rect.top;
+
+                // Create layout with right alignment
+                let layout = self.dwrite_factory.CreateTextLayout(
+                    &text_wide,
+                    format,
+                    rect_width,
+                    rect_height,
+                )?;
+
+                // Set right alignment
+                layout.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING)?;
+
+                target.DrawTextLayout(
+                    D2D_POINT_2F {
+                        x: rect.left,
+                        y: rect.top,
+                    },
+                    &layout,
+                    &brush,
+                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Measure text dimensions
     pub fn measure_text(
         &self,

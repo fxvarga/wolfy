@@ -10,13 +10,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::animation::{Easing, WindowAnimator};
 use crate::history::History;
-use crate::log::exe_dir;
+use crate::log::{exe_dir, find_config_file};
 use crate::mode::Mode;
 use crate::platform::win32::{
     self, discover_all_apps, get_monitor_width, get_wallpaper_path, invalidate_window,
     reposition_window, resize_window, set_wallpaper, translate_message, Event, ImageLoader,
     MouseButton, PollingFileWatcher, Renderer, WindowConfig,
 };
+use crate::task_runner::{TaskRunner, TaskStatus};
 use crate::tasks::{find_tasks_config, load_tasks_config, TaskItemState, TaskPanelPosition};
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageScale, LayoutContext, Rect};
@@ -42,6 +43,13 @@ const ANIMATION_FRAME_MS: u32 = 16;
 const TIMER_CLOCK: usize = 4;
 /// Clock update interval in milliseconds (1 second)
 const CLOCK_UPDATE_MS: u32 = 1000;
+/// Task poll timer ID
+const TIMER_TASK_POLL: usize = 5;
+/// Task poll interval in milliseconds (100ms for responsive status updates)
+const TASK_POLL_MS: u32 = 100;
+
+/// Application version from Cargo.toml
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Fuzzy match a query against a target string
 /// Returns Some(score) if matched, None if not matched
@@ -889,6 +897,8 @@ pub struct App {
     current_mode: Mode,
     /// Currently selected HyDE theme (for WallpaperPicker to know which theme's wallpapers to show)
     current_theme: Option<String>,
+    /// Background task runner for executing tasks without visible terminal
+    task_runner: TaskRunner,
 }
 
 impl App {
@@ -914,8 +924,8 @@ impl App {
             parent_size: config.width as f32,
         };
 
-        // Load theme from exe directory
-        let theme_path = exe_dir().join("default.rasi");
+        // Load theme from user config dir or exe directory
+        let theme_path = find_config_file("default.rasi");
         log!("  Loading theme from {:?}", theme_path);
         let theme = match ThemeTree::load(&theme_path) {
             Ok(t) => {
@@ -1032,6 +1042,10 @@ impl App {
             .map(|t| load_task_panel_style(t))
             .unwrap_or_default();
 
+        // Initialize task runner and cleanup old log files
+        let task_runner = TaskRunner::new();
+        task_runner.cleanup_old_files();
+
         log!("App::new() completed successfully");
         Ok(Self {
             hwnd,
@@ -1054,6 +1068,7 @@ impl App {
             task_panel_style,
             current_mode: Mode::default(),
             current_theme: None,
+            task_runner,
         })
     }
 
@@ -1112,6 +1127,20 @@ impl App {
     fn stop_clock_timer(&self) {
         unsafe {
             let _ = KillTimer(self.hwnd, TIMER_CLOCK);
+        }
+    }
+
+    /// Start task poll timer (for checking background task completion)
+    fn start_task_poll_timer(&self) {
+        unsafe {
+            SetTimer(self.hwnd, TIMER_TASK_POLL, TASK_POLL_MS, None);
+        }
+    }
+
+    /// Stop task poll timer
+    fn stop_task_poll_timer(&self) {
+        unsafe {
+            let _ = KillTimer(self.hwnd, TIMER_TASK_POLL);
         }
     }
 
@@ -1196,6 +1225,16 @@ impl App {
                 // Clock tick - repaint to update time display
                 self.renderer.mark_dirty();
                 invalidate_window(self.hwnd);
+                return Some(LRESULT(0));
+            }
+            WM_TIMER if wparam.0 == TIMER_TASK_POLL => {
+                // Poll background tasks for completion
+                let status_changed = self.task_runner.poll();
+                if status_changed {
+                    // A task finished - repaint to update indicators
+                    self.renderer.mark_dirty();
+                    invalidate_window(self.hwnd);
+                }
                 return Some(LRESULT(0));
             }
             WM_DPICHANGED => {
@@ -1446,8 +1485,8 @@ impl App {
 
                     if task_panel_focused {
                         // Activate selected task panel item
-                        // First, extract the script to run (if any) to avoid borrow conflicts
-                        let script_to_run: Option<String> =
+                        // First, extract the task info to avoid borrow conflicts
+                        let task_info: Option<(String, String, String)> =
                             if let Some(ref mut task_panel) = self.task_panel {
                                 if let Some(selected_idx) = task_panel.selected_item {
                                     if let Some(item_state) =
@@ -1464,18 +1503,22 @@ impl App {
                                                 cancel: false,
                                             };
                                         } else {
-                                            // Get script to run
+                                            // Get task info (group, name, script)
                                             if let Some(group) =
                                                 task_panel.config.groups.get(item_state.group_index)
                                             {
                                                 if let Some(task_idx) = item_state.task_index {
                                                     if let Some(task) = group.tasks.get(task_idx) {
                                                         log!(
-                                                            "Running task via keyboard: {} ({})",
+                                                            "Task selected via keyboard: {} ({})",
                                                             task.name,
                                                             task.script
                                                         );
-                                                        Some(task.script.clone())
+                                                        Some((
+                                                            group.name.clone(),
+                                                            task.name.clone(),
+                                                            task.script.clone(),
+                                                        ))
                                                     } else {
                                                         None
                                                     }
@@ -1496,12 +1539,23 @@ impl App {
                                 None
                             };
 
-                        // Now run the script outside of the borrow
-                        if let Some(script) = script_to_run {
-                            self.run_powershell_script(&script);
-                            win32::hide_window(self.hwnd);
+                        // Now handle the task outside of the borrow
+                        if let Some((group, name, script)) = task_info {
+                            // Check if task is already running
+                            if self.task_runner.is_running(&group, &name) {
+                                // Open tail terminal to show live output
+                                log!("Task {}:{} is running, opening tail terminal", group, name);
+                                let _ = self.open_task_tail(&group, &name);
+                            } else {
+                                // Start task in background
+                                log!("Starting background task: {}:{}", group, name);
+                                if let Err(e) = self.task_runner.start_task(&group, &name, &script)
+                                {
+                                    log!("Failed to start task: {}", e);
+                                }
+                            }
                             return EventResult {
-                                needs_repaint: false,
+                                needs_repaint: true,
                                 consumed: true,
                                 text_changed: false,
                                 submit: false,
@@ -1524,6 +1578,18 @@ impl App {
                     self.reload_theme();
                     return EventResult {
                         needs_repaint: true,
+                        consumed: true,
+                        text_changed: false,
+                        submit: false,
+                        cancel: false,
+                    };
+                }
+                // F6 restarts the application
+                KeyCode::F6 => {
+                    log!("F6 pressed - restarting application");
+                    self.restart_app();
+                    return EventResult {
+                        needs_repaint: false,
                         consumed: true,
                         text_changed: false,
                         submit: false,
@@ -1639,29 +1705,41 @@ impl App {
                             };
                         }
 
-                        // Run the task
+                        // Get task info
                         if let Some(group) = task_panel.config.groups.get(state.group_index) {
                             if let Some(task) = group.tasks.get(task_idx) {
+                                let group_name = group.name.clone();
+                                let task_name = task.name.clone();
                                 let script = task.script.clone();
-                                let name = task.name.clone();
-                                log!("Running task: {} ({})", name, script);
+                                log!("Task clicked: {}:{} ({})", group_name, task_name, script);
 
-                                // Run the script
-                                if let Err(e) = self.run_powershell_script(&script) {
-                                    log!("Failed to run task {}: {:?}", name, e);
+                                // Check if task is already running
+                                if self.task_runner.is_running(&group_name, &task_name) {
+                                    // Open tail terminal to show live output
+                                    log!(
+                                        "Task {}:{} is running, opening tail terminal",
+                                        group_name,
+                                        task_name
+                                    );
+                                    let _ = self.open_task_tail(&group_name, &task_name);
+                                } else {
+                                    // Start task in background
+                                    log!("Starting background task: {}:{}", group_name, task_name);
+                                    if let Err(e) = self.task_runner.start_task(
+                                        &group_name,
+                                        &task_name,
+                                        &script,
+                                    ) {
+                                        log!("Failed to start task: {}", e);
+                                    }
                                 }
 
-                                // Hide launcher after running task
-                                self.textbox.clear();
-                                win32::hide_window(self.hwnd);
-                                self.stop_cursor_timer();
-
                                 return EventResult {
-                                    needs_repaint: false,
+                                    needs_repaint: true,
                                     consumed: true,
                                     text_changed: false,
                                     submit: false,
-                                    cancel: true,
+                                    cancel: false,
                                 };
                             }
                         }
@@ -1677,20 +1755,35 @@ impl App {
         use std::os::windows::process::CommandExt;
         use std::process::Command;
 
-        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
         log!("Running task in terminal: {}", script);
 
-        // Build the full PowerShell command line
-        let ps_args = if script.ends_with(".ps1") {
-            format!("-ExecutionPolicy Bypass -NoExit -File \"{}\"", script)
-        } else {
-            // For inline commands, wrap in a script block to handle complex commands
-            format!("-ExecutionPolicy Bypass -NoExit -Command \"{}\"", script)
-        };
+        // Create a PowerShell script that:
+        // 1. Hides the window immediately on start
+        // 2. Sets console size
+        // 3. Centers the window
+        // 4. Shows the window
+        // 5. Runs the user's script
+        let center_and_run = format!(
+            r#"Add-Type -Name W -Namespace N -MemberDefinition '[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out RECT r);[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int h,bool r);[DllImport("kernel32.dll")]public static extern IntPtr GetConsoleWindow();public struct RECT{{public int L,T,R,B;}}'
+Add-Type -AssemblyName System.Windows.Forms
+$h=[N.W]::GetConsoleWindow()
+[N.W]::ShowWindow($h,0)|Out-Null
+$Host.UI.RawUI.WindowSize=New-Object System.Management.Automation.Host.Size(100,25)
+$Host.UI.RawUI.BufferSize=New-Object System.Management.Automation.Host.Size(100,3000)
+$r=New-Object N.W+RECT;[N.W]::GetWindowRect($h,[ref]$r)|Out-Null
+$ww=$r.R-$r.L;$wh=$r.B-$r.T
+$sw=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Width
+$sh=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height
+[N.W]::MoveWindow($h,[int](($sw-$ww)/2),[int](($sh-$wh)/2),$ww,$wh,$false)|Out-Null
+[N.W]::ShowWindow($h,1)|Out-Null
+Clear-Host
+{}"#,
+            script
+        );
 
         // Try Windows Terminal first (modern Windows 10/11)
-        // wt syntax: wt new-tab powershell -NoExit -Command "..."
         let result = Command::new("wt")
             .arg("new-tab")
             .arg("--")
@@ -1699,8 +1792,7 @@ impl App {
             .arg("Bypass")
             .arg("-NoExit")
             .arg("-Command")
-            .arg(script)
-            .creation_flags(DETACHED_PROCESS)
+            .arg(&center_and_run)
             .spawn();
 
         if result.is_ok() {
@@ -1708,15 +1800,15 @@ impl App {
             return Ok(());
         }
 
-        // Fall back to starting PowerShell directly with a visible window
+        // Fall back to starting PowerShell directly with a visible console
         log!("Windows Terminal not found, falling back to PowerShell directly");
         let result = Command::new("powershell")
             .arg("-ExecutionPolicy")
             .arg("Bypass")
             .arg("-NoExit")
             .arg("-Command")
-            .arg(script)
-            .creation_flags(DETACHED_PROCESS)
+            .arg(&center_and_run)
+            .creation_flags(CREATE_NEW_CONSOLE)
             .spawn();
 
         match result {
@@ -1726,6 +1818,86 @@ impl App {
             }
             Err(e) => {
                 log!("Failed to run PowerShell script {}: {}", script, e);
+                Err(windows::core::Error::from_win32())
+            }
+        }
+    }
+
+    /// Open a tail terminal for a running task to see live output
+    fn open_task_tail(&self, group: &str, name: &str) -> Result<(), windows::core::Error> {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+
+        const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+
+        let output_file = self.task_runner.get_output_file(group, name);
+        let file_path = output_file.display().to_string();
+
+        log!(
+            "Opening tail terminal for task {}:{} ({})",
+            group,
+            name,
+            file_path
+        );
+
+        // PowerShell command to tail the file with centering
+        // Uses Get-Content -Wait -Tail to show live output
+        let tail_script = format!(
+            r#"Add-Type -Name W -Namespace N -MemberDefinition '[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out RECT r);[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int h,bool r);[DllImport("kernel32.dll")]public static extern IntPtr GetConsoleWindow();public struct RECT{{public int L,T,R,B;}}'
+Add-Type -AssemblyName System.Windows.Forms
+$h=[N.W]::GetConsoleWindow()
+[N.W]::ShowWindow($h,0)|Out-Null
+$Host.UI.RawUI.WindowSize=New-Object System.Management.Automation.Host.Size(100,25)
+$Host.UI.RawUI.BufferSize=New-Object System.Management.Automation.Host.Size(100,3000)
+$Host.UI.RawUI.WindowTitle='Task: {} - {}'
+$r=New-Object N.W+RECT;[N.W]::GetWindowRect($h,[ref]$r)|Out-Null
+$ww=$r.R-$r.L;$wh=$r.B-$r.T
+$sw=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Width
+$sh=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height
+[N.W]::MoveWindow($h,[int](($sw-$ww)/2),[int](($sh-$wh)/2),$ww,$wh,$false)|Out-Null
+[N.W]::ShowWindow($h,1)|Out-Null
+Clear-Host
+Write-Host "=== Live output for task: {} ===" -ForegroundColor Cyan
+Write-Host ""
+Get-Content -Path '{}' -Wait -Tail 50"#,
+            group, name, name, file_path
+        );
+
+        // Try Windows Terminal first
+        let result = Command::new("wt")
+            .arg("new-tab")
+            .arg("--")
+            .arg("powershell")
+            .arg("-ExecutionPolicy")
+            .arg("Bypass")
+            .arg("-NoExit")
+            .arg("-Command")
+            .arg(&tail_script)
+            .spawn();
+
+        if result.is_ok() {
+            log!("Opened tail in Windows Terminal");
+            return Ok(());
+        }
+
+        // Fall back to PowerShell directly
+        log!("Windows Terminal not found, falling back to PowerShell");
+        let result = Command::new("powershell")
+            .arg("-ExecutionPolicy")
+            .arg("Bypass")
+            .arg("-NoExit")
+            .arg("-Command")
+            .arg(&tail_script)
+            .creation_flags(CREATE_NEW_CONSOLE)
+            .spawn();
+
+        match result {
+            Ok(_) => {
+                log!("Opened tail in PowerShell");
+                Ok(())
+            }
+            Err(e) => {
+                log!("Failed to open tail terminal: {}", e);
                 Err(windows::core::Error::from_win32())
             }
         }
@@ -1754,6 +1926,64 @@ impl App {
                 log!("Failed to spawn {}: {}", command, e);
                 Err(windows::core::Error::from_win32())
             }
+        }
+    }
+
+    /// Restart the application by spawning a new instance and exiting
+    fn restart_app(&self) {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        log!("Restarting application via cmd trampoline...");
+
+        // Get the current executable path
+        if let Ok(exe_path) = std::env::current_exe() {
+            log!("Current exe: {:?}", exe_path);
+
+            let exe_str = exe_path.to_string_lossy().to_string();
+            log!("Exe path string: {}", exe_str);
+
+            // Write a small batch file that waits and restarts
+            // This avoids all escaping issues with cmd arguments
+            let temp_dir = std::env::temp_dir();
+            let batch_path = temp_dir.join("wolfy_restart.bat");
+            let batch_content = format!(
+                "@echo off\r\nping -n 2 localhost >nul\r\nstart \"\" \"{}\"\r\ndel \"%~f0\"\r\n",
+                exe_str
+            );
+            log!("Batch file: {:?}", batch_path);
+            log!("Batch content: {}", batch_content);
+
+            if let Err(e) = std::fs::write(&batch_path, &batch_content) {
+                log!("Failed to write batch file: {}", e);
+                return;
+            }
+
+            // Run the batch file
+            match Command::new("cmd")
+                .args(["/C", &batch_path.to_string_lossy()])
+                .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
+                .spawn()
+            {
+                Ok(_) => {
+                    log!("Batch trampoline spawned, exiting current instance");
+                }
+                Err(e) => {
+                    log!("Failed to spawn batch trampoline: {}", e);
+                    return;
+                }
+            }
+
+            // Exit immediately - batch will relaunch us in ~1 second
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
+                PostQuitMessage(0);
+            }
+        } else {
+            log!("Failed to get current exe path");
         }
     }
 
@@ -1896,8 +2126,7 @@ impl App {
 
     /// Reload theme from disk and apply all changes
     pub fn reload_theme(&mut self) {
-        let theme_path = exe_dir().join("default.rasi");
-        log!("reload_theme() - exe_dir={:?}", exe_dir());
+        let theme_path = find_config_file("default.rasi");
         log!("reload_theme() - theme_path={:?}", theme_path);
         log!("reload_theme() - file exists={}", theme_path.exists());
 
@@ -2171,6 +2400,9 @@ impl App {
             border_width,
         );
 
+        // Draw version watermark in bottom right corner
+        self.draw_version_watermark(width, height, mainbox_padding);
+
         log!("  Calling end_draw()...");
         let opacity = self.animator.get_opacity();
         let result = self.renderer.end_draw_with_opacity(opacity);
@@ -2218,6 +2450,44 @@ impl App {
                 log!("  Unknown widget for background: {}", name);
             }
         }
+    }
+
+    /// Draw version watermark in bottom right corner
+    fn draw_version_watermark(&mut self, width: i32, height: i32, padding: f32) {
+        use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
+
+        let version_text = format!("v{}", VERSION);
+        let font_size = 10.0 * self.layout_ctx.scale_factor;
+
+        // Create a small text format for the version
+        let text_format = match self
+            .renderer
+            .create_text_format("Segoe UI", font_size, false, false)
+        {
+            Ok(fmt) => fmt,
+            Err(_) => return,
+        };
+
+        // Position in bottom right, inside the mainbox padding
+        let text_width = 60.0 * self.layout_ctx.scale_factor;
+        let text_height = 14.0 * self.layout_ctx.scale_factor;
+        let margin = 4.0 * self.layout_ctx.scale_factor;
+
+        let rect = D2D_RECT_F {
+            left: width as f32 - padding - text_width - margin,
+            top: height as f32 - padding - text_height - margin,
+            right: width as f32 - padding - margin,
+            bottom: height as f32 - padding - margin,
+        };
+
+        // Draw with low opacity as a subtle watermark
+        let watermark_color = Color::from_f32(1.0, 1.0, 1.0, 0.3);
+        let _ = self.renderer.draw_text_right_aligned(
+            &version_text,
+            &text_format,
+            rect,
+            watermark_color,
+        );
     }
 
     /// Draw the left wallpaper panel (no overlay - clean wallpaper)
@@ -2580,6 +2850,22 @@ impl App {
         let selected = task_panel.selected_item;
         let is_focused = task_panel.focused;
 
+        // Get task statuses for indicator dots
+        let task_statuses = self.task_runner.get_all_statuses();
+
+        // Calculate pulse animation for running tasks (using time)
+        let pulse_opacity = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let millis = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
+            // Pulse between 0.4 and 1.0 over ~1 second cycle
+            let t = (millis % 1000) as f32 / 1000.0;
+            let pulse = (t * std::f32::consts::PI * 2.0).sin() * 0.5 + 0.5;
+            0.4 + pulse * 0.6
+        };
+
         let mut y = panel_top + inner_padding;
 
         // Compact mode: group icons only
@@ -2851,6 +3137,45 @@ impl App {
                     let _ =
                         self.renderer
                             .draw_text(&task.name, &text_format, label_rect, text_color);
+
+                    // Status indicator dot (if task has run status)
+                    let task_key = format!("{}:{}", group.name, task.name);
+                    if let Some(status) = task_statuses.get(&task_key) {
+                        // Choose color based on status
+                        let (dot_color, should_pulse) = match status {
+                            TaskStatus::Running => (
+                                Color::from_f32(0.3, 0.6, 1.0, pulse_opacity), // Blue, pulsing
+                                true,
+                            ),
+                            TaskStatus::Completed => (
+                                Color::from_f32(0.3, 0.8, 0.3, 1.0), // Green
+                                false,
+                            ),
+                            TaskStatus::Failed => (
+                                Color::from_f32(0.9, 0.3, 0.3, 1.0), // Red
+                                false,
+                            ),
+                        };
+
+                        // Draw the dot at the right edge of the row
+                        let dot_size = 8.0 * scale;
+                        let dot_x = task_row.right - dot_size - 8.0 * scale;
+                        let dot_y = (task_row.top + task_row.bottom) / 2.0;
+
+                        // Draw filled circle
+                        let _ = self.renderer.fill_ellipse(
+                            dot_x,
+                            dot_y,
+                            dot_size / 2.0,
+                            dot_size / 2.0,
+                            dot_color,
+                        );
+
+                        // Force repaint if pulsing (to animate)
+                        if should_pulse {
+                            invalidate_window(self.hwnd);
+                        }
+                    }
 
                     // Hit-test bounds for task row
                     task_panel.item_states.push(TaskItemState {
@@ -3293,6 +3618,7 @@ impl App {
         self.stop_cursor_timer();
         self.stop_animation_timer();
         self.stop_clock_timer();
+        self.stop_task_poll_timer();
         self.animator.clear();
         log!("hide() completed");
     }
@@ -3313,6 +3639,7 @@ impl App {
 
         self.textbox.show_cursor();
         self.start_cursor_timer();
+        self.start_task_poll_timer();
 
         // Mark renderer as dirty to force a full render
         self.renderer.mark_dirty();

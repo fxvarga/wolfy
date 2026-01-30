@@ -159,9 +159,22 @@ pub fn load_tasks_config(path: &Path) -> TasksConfig {
     }
 }
 
-/// Find tasks.toml in standard locations
+/// Find tasks.toml in standard locations (user config first, then exe dir)
 pub fn find_tasks_config() -> Option<std::path::PathBuf> {
-    // Check next to executable first
+    // Check user config directory first
+    if let Some(config_dir) = dirs::config_dir() {
+        let config_path = config_dir.join("wolfy").join("tasks.toml");
+        log!(
+            "find_tasks_config: checking config {:?} exists={}",
+            config_path,
+            config_path.exists()
+        );
+        if config_path.exists() {
+            return Some(config_path);
+        }
+    }
+
+    // Check next to executable
     if let Ok(exe_path) = std::env::current_exe() {
         log!("find_tasks_config: exe_path={:?}", exe_path);
         if let Some(exe_dir) = exe_path.parent() {
@@ -186,19 +199,6 @@ pub fn find_tasks_config() -> Option<std::path::PathBuf> {
     );
     if cwd_path.exists() {
         return Some(cwd_path.to_path_buf());
-    }
-
-    // Check user config directory
-    if let Some(config_dir) = dirs::config_dir() {
-        let config_path = config_dir.join("wolfy").join("tasks.toml");
-        log!(
-            "find_tasks_config: checking config {:?} exists={}",
-            config_path,
-            config_path.exists()
-        );
-        if config_path.exists() {
-            return Some(config_path);
-        }
     }
 
     log!("find_tasks_config: no tasks.toml found");

@@ -11,7 +11,8 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{KillTimer, SetTimer};
 
 use crate::animation::{Easing, WindowAnimator};
-use crate::log::exe_dir;
+use crate::app::VERSION;
+use crate::log::find_config_file;
 use crate::mode::Mode;
 use crate::platform::win32::{
     get_monitor_width, invalidate_window, resize_window, translate_message, Renderer, WindowConfig,
@@ -122,7 +123,7 @@ impl GridWindow {
             Mode::WallpaperPicker => "wallpaper_picker.rasi",
             Mode::Launcher => "launcher.rasi", // Shouldn't happen, but handle it
         };
-        let theme_path = exe_dir().join(theme_filename);
+        let theme_path = find_config_file(theme_filename);
         log!("  Loading theme from {:?}", theme_path);
 
         let theme = ThemeTree::load(&theme_path).ok();
@@ -470,6 +471,9 @@ impl GridWindow {
         self.gridview
             .render(&mut self.renderer, bounds, &self.layout_ctx)?;
 
+        // Draw version watermark in bottom right corner
+        self.draw_version_watermark(size.0, size.1);
+
         // End render
         self.renderer.end_draw()?;
 
@@ -491,5 +495,43 @@ impl GridWindow {
             let easing = Easing::from_name(&self.style.animation_easing);
             self.animator = WindowAnimator::new(self.style.animation_duration_ms, easing);
         }
+    }
+
+    /// Draw version watermark in bottom right corner
+    fn draw_version_watermark(&mut self, width: i32, height: i32) {
+        use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
+
+        let version_text = format!("v{}", VERSION);
+        let font_size = 10.0 * self.layout_ctx.scale_factor;
+
+        // Create a small text format for the version
+        let text_format = match self
+            .renderer
+            .create_text_format("Segoe UI", font_size, false, false)
+        {
+            Ok(fmt) => fmt,
+            Err(_) => return,
+        };
+
+        // Position in bottom right with some margin
+        let text_width = 60.0 * self.layout_ctx.scale_factor;
+        let text_height = 14.0 * self.layout_ctx.scale_factor;
+        let margin = 8.0 * self.layout_ctx.scale_factor;
+
+        let rect = D2D_RECT_F {
+            left: width as f32 - text_width - margin,
+            top: height as f32 - text_height - margin,
+            right: width as f32 - margin,
+            bottom: height as f32 - margin,
+        };
+
+        // Draw with low opacity as a subtle watermark
+        let watermark_color = Color::from_f32(1.0, 1.0, 1.0, 0.3);
+        let _ = self.renderer.draw_text_right_aligned(
+            &version_text,
+            &text_format,
+            rect,
+            watermark_color,
+        );
     }
 }

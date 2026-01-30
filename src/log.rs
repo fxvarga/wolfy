@@ -17,6 +17,26 @@ pub fn exe_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// Get the user config directory for wolfy (~/.config/wolfy on Linux, %APPDATA%/wolfy on Windows)
+pub fn user_config_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|p| p.join("wolfy"))
+}
+
+/// Find a config file, checking user config dir first, then exe dir
+/// Returns the path to the file if found, or the exe dir path as fallback
+pub fn find_config_file(filename: &str) -> PathBuf {
+    // Check user config directory first
+    if let Some(user_dir) = user_config_dir() {
+        let user_path = user_dir.join(filename);
+        if user_path.exists() {
+            return user_path;
+        }
+    }
+
+    // Fall back to exe directory
+    exe_dir().join(filename)
+}
+
 /// Initialize logging to a file next to the executable
 pub fn init() {
     let log_path = exe_dir().join("wolfy.log");

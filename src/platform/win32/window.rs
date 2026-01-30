@@ -78,6 +78,13 @@ unsafe extern "system" fn wnd_proc(
                 lparam.0
             );
         }
+        // Log mouse button events for debugging
+        0x0201 | 0x0202 | 0x0204 | 0x0205 => {
+            // WM_LBUTTONDOWN=0x201, WM_LBUTTONUP=0x202, WM_RBUTTONDOWN=0x204, WM_RBUTTONUP=0x205
+            let x = (lparam.0 & 0xFFFF) as i16;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16;
+            log!("wnd_proc: MOUSE msg=0x{:04X} at ({}, {})", msg, x, y);
+        }
         _ => {}
     }
 

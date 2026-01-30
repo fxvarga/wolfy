@@ -22,6 +22,7 @@ mod history;
 mod mode;
 mod platform;
 mod state;
+mod task_runner;
 mod tasks;
 mod theme;
 mod widget;
@@ -36,7 +37,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use app::App;
 use grid_window::GridWindow;
-use log::exe_dir;
+use log::find_config_file;
 use mode::Mode;
 use platform::win32::{
     self, create_window, default_mode_hotkeys, enable_dpi_awareness, get_monitor_width,
@@ -157,7 +158,7 @@ fn main() {
     log!("Created shared AppState");
 
     // Load launcher theme to determine window dimensions
-    let theme_path = exe_dir().join("default.rasi");
+    let theme_path = find_config_file("default.rasi");
     log!("Loading launcher theme from {:?}", theme_path);
     let (launcher_width, launcher_height) = match ThemeTree::load(&theme_path) {
         Ok(theme) => {
@@ -178,14 +179,14 @@ fn main() {
     log!("Monitor width: {}", monitor_width);
 
     // Load theme picker dimensions
-    let theme_picker_path = exe_dir().join("theme_picker.rasi");
+    let theme_picker_path = find_config_file("theme_picker.rasi");
     let theme_picker_height = match ThemeTree::load(&theme_picker_path) {
         Ok(theme) => theme.get_number("window", None, "height", 520.0) as i32,
         Err(_) => 520,
     };
 
     // Load wallpaper picker dimensions
-    let wallpaper_picker_path = exe_dir().join("wallpaper_picker.rasi");
+    let wallpaper_picker_path = find_config_file("wallpaper_picker.rasi");
     let wallpaper_picker_height = match ThemeTree::load(&wallpaper_picker_path) {
         Ok(theme) => theme.get_number("window", None, "height", 650.0) as i32,
         Err(_) => 650,
@@ -359,7 +360,7 @@ fn main() {
     launcher.borrow().start_file_watch_timer();
 
     log!(
-        "Wolfy started (multi-window). Hotkeys: Ctrl+0 (launcher), Ctrl+1 (theme), Ctrl+2 (wallpaper). F5 to reload theme."
+        "Wolfy started (multi-window). Hotkeys: Ctrl+0 (launcher), Ctrl+1 (theme), Ctrl+2 (wallpaper). F5=reload theme, F6=restart app."
     );
 
     // Run message loop with hotkey handling

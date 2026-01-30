@@ -22,6 +22,10 @@ pub mod history;
 // Task runner configuration (no Windows dependencies)
 pub mod tasks;
 
+// Background task runner (has Windows dependencies for process spawning)
+#[cfg(windows)]
+pub mod task_runner;
+
 // Widget base types (no Windows dependencies)
 pub mod widget {
     pub mod base;

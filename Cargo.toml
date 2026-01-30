@@ -1,6 +1,6 @@
 [package]
 name = "wolfy"
-version = "0.1.0"
+version = "0.1.11"
 edition = "2021"
 description = "A Windows application launcher inspired by rofi"
 authors = ["Wolfy Contributors"]
