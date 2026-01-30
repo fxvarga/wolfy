@@ -37,4 +37,7 @@ Desktop.ini
 *.backup
 *.orig
 nul
-hyde/
+# Hyde - ignore config files but keep wallpapers
+hyde/**/*.json
+hyde/**/*.conf
+hyde/**/*.lst
