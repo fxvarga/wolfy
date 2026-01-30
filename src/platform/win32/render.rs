@@ -343,6 +343,15 @@ impl Renderer {
         self.dpi
     }
 
+    /// Get current render target size (width, height) in pixels
+    pub fn get_size(&self) -> (i32, i32) {
+        if let Some(ref buffer) = self.offscreen {
+            (buffer.width, buffer.height)
+        } else {
+            (0, 0)
+        }
+    }
+
     /// Begin drawing - returns true if drawing can proceed
     pub fn begin_draw(&mut self) -> bool {
         log!("begin_draw() called");

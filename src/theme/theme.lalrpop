@@ -27,13 +27,20 @@ SelectorList: Vec<Selector> = {
 };
 
 // A single selector
+// Supports both CSS-style (element:state) and rofi-style (element.state) state selectors
 Selector: Selector = {
     "*" => Selector::Universal,
-    <name:Ident> <state:("." <Ident>)?> => {
-        match state {
-            Some(s) => Selector::Element { name, state: Some(s) },
-            None => Selector::Element { name, state: None },
-        }
+    // element:state (CSS pseudo-class style)
+    <name:Ident> ":" <state:Ident> => {
+        Selector::Element { name, state: Some(state) }
+    },
+    // element.state (rofi style)
+    <name:Ident> "." <state:Ident> => {
+        Selector::Element { name, state: Some(state) }
+    },
+    // element (no state)
+    <name:Ident> => {
+        Selector::Element { name, state: None }
     }
 };
 

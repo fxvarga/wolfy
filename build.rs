@@ -6,7 +6,7 @@ fn main() {
     // Process LALRPOP grammar
     lalrpop::process_root().unwrap();
 
-    // Copy default.rasi and tasks.toml to the output directory
+    // Copy theme files and tasks.toml to the output directory
     let out_dir = env::var("OUT_DIR").unwrap();
     // OUT_DIR is something like target/x86_64-pc-windows-gnu/release/build/wolfy-xxx/out
     // We need to go up to the target profile directory (release or debug)
@@ -17,16 +17,25 @@ fn main() {
     if let Some(profile_dir) = out_path.ancestors().nth(3)
     // up 3 levels from OUT_DIR
     {
-        // Copy default.rasi
-        let src = Path::new("default.rasi");
-        let dst = profile_dir.join("default.rasi");
+        // List of theme files to copy
+        let theme_files = [
+            "default.rasi",          // Legacy/fallback
+            "launcher.rasi",         // Launcher window theme
+            "theme_picker.rasi",     // Theme picker window theme
+            "wallpaper_picker.rasi", // Wallpaper picker window theme
+        ];
 
-        if src.exists() {
-            println!("cargo:rerun-if-changed=default.rasi");
-            if let Err(e) = fs::copy(src, &dst) {
-                println!("cargo:warning=Failed to copy default.rasi: {}", e);
-            } else {
-                println!("cargo:warning=Copied default.rasi to {:?}", dst);
+        for file in &theme_files {
+            let src = Path::new(file);
+            let dst = profile_dir.join(file);
+
+            if src.exists() {
+                println!("cargo:rerun-if-changed={}", file);
+                if let Err(e) = fs::copy(src, &dst) {
+                    println!("cargo:warning=Failed to copy {}: {}", file, e);
+                } else {
+                    println!("cargo:warning=Copied {} to {:?}", file, dst);
+                }
             }
         }
 

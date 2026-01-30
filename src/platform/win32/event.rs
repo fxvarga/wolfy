@@ -244,6 +244,8 @@ pub enum Event {
     MouseUp { x: i32, y: i32, button: MouseButton },
     /// Mouse moved
     MouseMove { x: i32, y: i32 },
+    /// Mouse wheel scrolled (delta is positive for scroll up, negative for scroll down)
+    MouseWheel { x: i32, y: i32, delta: i32 },
     /// Window needs repainting
     Paint,
     /// Window received focus
@@ -352,6 +354,16 @@ pub fn translate_message(_hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) 
             let x = (lparam.0 & 0xFFFF) as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
             Some(Event::MouseMove { x, y })
+        }
+        WM_MOUSEWHEEL => {
+            // High word of wparam is wheel delta (positive = up, negative = down)
+            // WHEEL_DELTA (120) is one "notch"
+            let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            // lparam contains screen coordinates, but we'll use 0,0 as position
+            // since we handle scrolling globally in the grid
+            let x = (lparam.0 & 0xFFFF) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            Some(Event::MouseWheel { x, y, delta })
         }
         WM_PAINT => Some(Event::Paint),
         WM_SETFOCUS => Some(Event::FocusGained),

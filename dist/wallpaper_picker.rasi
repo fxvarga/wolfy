@@ -1,0 +1,75 @@
+/* Wolfy Wallpaper Picker - Vertical Card Layout */
+/* Cards: [Portrait thumbnail TOP] | [Filename BOTTOM] */
+
+* {
+    main-bg: #1e1e2ecc;
+    main-fg: #cdd6f4ff;
+    main-br: #89b4faff;
+    select-bg: #89b4faff;
+    select-fg: #1e1e2eff;
+}
+
+/* Main window - full monitor width, taller for portrait thumbnails */
+window {
+    width: 1920;           /* Will be overridden to monitor width at runtime */
+    height: 650;
+    background-color: #1e1e2ecc;
+    border-radius: 0;      /* No radius for full-width bar */
+    border-color: #89b4fa;
+    border-width: 0;
+    hotkey: "ctrl+2";
+    animation-duration: 150;
+    animation-easing: ease-out-expo;
+}
+
+/* GridView configuration for vertical wallpaper cards */
+gridview {
+    background-color: transparent;
+    layout: vertical;      /* Card layout: thumbnail TOP, label BOTTOM */
+    
+    /* Spacing and padding */
+    spacing: 20;
+    padding: 24;
+    padding-left: 48;
+    padding-right: 48;
+    
+    /* Thumbnail size - portrait orientation for wallpaper preview */
+    thumb-width: 300;
+    thumb-height: 500;
+    thumb-radius: 12;
+    
+    /* Label area (below thumbnail) */
+    label-height: 48;
+    label-color: #a6adc8;
+    label-background-color: transparent;
+    
+    /* Selection style: blue background on label area */
+    selection-style: label-background;
+    
+    /* Maximum visible items per row (for scroll calculation) */
+    max-columns: 15;
+    
+    /* Typography */
+    font-family: "Segoe UI";
+    font-size: 13;
+}
+
+gridview:selected {
+    label-background-color: #89b4fa;
+    label-color: #1e1e2e;
+    border-color: transparent;
+    border-width: 0;
+}
+
+gridview:hover {
+    label-background-color: #89b4fa40;
+}
+
+/* Message shown when no theme is selected */
+message {
+    text: "Select a theme first (Ctrl+1)";
+    text-color: #6c7086;
+    font-family: "Segoe UI";
+    font-size: 24;
+    background-color: transparent;
+}

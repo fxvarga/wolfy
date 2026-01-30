@@ -11,6 +11,26 @@
     text-color: #ff7edb;
 }
 
+gridview {
+    spacing: 18;
+    padding: 16;
+    padding-left: 24;
+    padding-right: 24;
+    thumb-size: 230;
+    thumb-radius: 14;
+    label-height: 28;
+    label-color: #d4d4d4;
+    max-columns: 5;
+    font-family: "Segoe UI";
+    font-size: 12;
+}
+
+gridview:selected {
+    border-color: #264f78;
+    border-width: 3;
+    label-color: #ffffff;
+}
+
 /* Main window */
 window {
     width: 920;
@@ -141,12 +161,12 @@ element {
     border-radius: 8;
 }
 
-element.selected {
+element:selected {
     background-color: #03edf9;
     text-color: #495495;
 }
 
-element.hover {
+element:hover {
     background-color: #ff7edb20;
 }
 

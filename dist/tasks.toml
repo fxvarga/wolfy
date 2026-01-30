@@ -12,19 +12,19 @@ icon = "\uf121"
 expanded = true
 
 [[groups.tasks]]
-name = "Restart Backend"
+name = "List Files"
 icon = "\uf308"
-script = "Start-Service docker"
+script = "Get-ChildItem"
 
 [[groups.tasks]]
-name = "Restart Frontend"
+name = "System Info"
 icon = "\uf0a1"
-script = "code ."
+script = "Get-ComputerInfo | Select-Object WindowsVersion, OsArchitecture, CsName"
 
 [[groups.tasks]]
-name = "Run Linter"
+name = "Network Status"
 icon = "\ue795"
-script = "wt"
+script = "ipconfig"
 
 # System utilities group
 [[groups]]
@@ -33,14 +33,14 @@ icon = "\uf013"
 expanded = false
 
 [[groups.tasks]]
-name = "Restart Backend FCW"
+name = "Disk Usage"
 icon = "\uf1c0"
-script = "cleanmgr"
+script = "Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free -AutoSize"
 
 [[groups.tasks]]
-name = "Restart Frontend FCW"
+name = "Running Processes"
 icon = "\uf0ae"
-script = "taskmgr"
+script = "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU, WorkingSet"
 
 # Network tools group
 [[groups]]
@@ -49,11 +49,11 @@ icon = "\uf0ac"
 expanded = false
 
 [[groups.tasks]]
-name = "Review Latest PRs"
+name = "DNS Lookup"
 icon = "\uf0ac"
-script = "ipconfig /flushdns"
+script = "Resolve-DnsName google.com"
 
 [[groups.tasks]]
-name = "Review Kanban Board"
+name = "Ping Test"
 icon = "\uf0e8"
-script = "netstat -an | Out-GridView"
+script = "Test-Connection -ComputerName google.com -Count 4"

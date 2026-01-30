@@ -374,3 +374,71 @@ pub fn destroy_window(hwnd: HWND) {
         let _ = DestroyWindow(hwnd);
     }
 }
+
+/// Resize and reposition window to specified dimensions (centered horizontally)
+pub fn resize_window(hwnd: HWND, width: i32, height: i32, vertical_position: f32) {
+    let dpi = DpiInfo::for_window(hwnd).dpi;
+
+    unsafe {
+        // Get primary monitor info
+        let monitor = MonitorFromWindow(HWND::default(), MONITOR_DEFAULTTOPRIMARY);
+        let mut monitor_info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let _ = GetMonitorInfoW(monitor, &mut monitor_info);
+
+        let monitor_area = monitor_info.rcMonitor;
+        let monitor_width = monitor_area.right - monitor_area.left;
+        let monitor_height = monitor_area.bottom - monitor_area.top;
+
+        // Scale dimensions by DPI
+        let scaled_width = scale_px(width, dpi);
+        let scaled_height = scale_px(height, dpi);
+
+        // Center horizontally
+        let x = monitor_area.left + (monitor_width - scaled_width) / 2;
+
+        // Position vertically based on vertical_position
+        let available_y = monitor_height - scaled_height;
+        let y = monitor_area.top + (available_y as f32 * vertical_position) as i32;
+
+        crate::log!(
+            "resize_window: {}x{} at ({}, {}), dpi={}",
+            scaled_width,
+            scaled_height,
+            x,
+            y,
+            dpi
+        );
+
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            x,
+            y,
+            scaled_width,
+            scaled_height,
+            SWP_NOACTIVATE | SWP_NOZORDER,
+        );
+    }
+}
+
+/// Get the primary monitor's width in logical pixels (at 96 DPI)
+pub fn get_monitor_width() -> i32 {
+    unsafe {
+        let monitor = MonitorFromWindow(HWND::default(), MONITOR_DEFAULTTOPRIMARY);
+        let mut monitor_info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let _ = GetMonitorInfoW(monitor, &mut monitor_info);
+
+        let monitor_area = monitor_info.rcMonitor;
+        let width = monitor_area.right - monitor_area.left;
+
+        // Return logical pixels (unscale from screen DPI)
+        let dpi = GetDpiForSystem();
+        width * 96 / dpi as i32
+    }
+}

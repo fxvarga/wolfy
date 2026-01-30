@@ -1,0 +1,68 @@
+/* Wolfy Theme Picker - Horizontal Card Layout */
+/* Cards: [Landscape thumbnail LEFT] | [Theme name RIGHT] */
+
+* {
+    main-bg: #1e1e2ecc;
+    main-fg: #cdd6f4ff;
+    main-br: #89b4faff;
+    select-bg: #74c7ecff;
+    select-fg: #1e1e2eff;
+}
+
+/* Main window - full monitor width, fixed height */
+window {
+    width: 1920;           /* Will be overridden to monitor width at runtime */
+    height: 520;
+    background-color: #1e1e2ecc;
+    border-radius: 0;      /* No radius for full-width bar */
+    border-color: #89b4fa;
+    border-width: 0;
+    hotkey: "ctrl+1";
+    animation-duration: 150;
+    animation-easing: ease-out-expo;
+}
+
+/* GridView configuration for horizontal theme cards */
+gridview {
+    background-color: transparent;
+    layout: horizontal;    /* Card layout: thumbnail LEFT, label RIGHT */
+    
+    /* Spacing and padding */
+    spacing: 24;
+    padding: 24;
+    padding-left: 48;
+    padding-right: 48;
+    
+    /* Thumbnail size - landscape orientation for theme preview */
+    thumb-width: 400;
+    thumb-height: 280;
+    thumb-radius: 12;
+    
+    /* Label area (to the right of thumbnail) */
+    label-width: 180;
+    label-height: 280;     /* Match thumbnail height for vertical centering */
+    label-color: #cdd6f4;
+    label-background-color: transparent;
+    
+    /* Selection style: thick border around entire card */
+    selection-style: border;
+    
+    /* Maximum visible items per row (for scroll calculation) */
+    max-columns: 10;
+    
+    /* Typography */
+    font-family: "Segoe UI";
+    font-size: 16;
+    font-weight: 600;
+}
+
+gridview:selected {
+    border-color: #74c7ec;
+    border-width: 4;
+    label-color: #ffffff;
+}
+
+gridview:hover {
+    border-color: #74c7ec40;
+    border-width: 2;
+}

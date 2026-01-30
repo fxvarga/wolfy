@@ -1,6 +1,6 @@
 //! Application state machine for Wolfy
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap;
@@ -11,16 +11,19 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::animation::{Easing, WindowAnimator};
 use crate::history::History;
 use crate::log::exe_dir;
+use crate::mode::Mode;
 use crate::platform::win32::{
-    self, discover_all_apps, get_wallpaper_path, invalidate_window, reposition_window,
-    translate_message, Event, ImageLoader, MouseButton, PollingFileWatcher, Renderer, WindowConfig,
+    self, discover_all_apps, get_monitor_width, get_wallpaper_path, invalidate_window,
+    reposition_window, resize_window, set_wallpaper, translate_message, Event, ImageLoader,
+    MouseButton, PollingFileWatcher, Renderer, WindowConfig,
 };
 use crate::tasks::{find_tasks_config, load_tasks_config, TaskItemState, TaskPanelPosition};
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageScale, LayoutContext, Rect};
 use crate::widget::{
-    ClockConfig, ClockPosition, CornerRadii, ElementData, ElementStyle, EventResult, ListView,
-    ListViewStyle, TaskPanelState, TaskPanelStyle, Textbox, Widget, WidgetState, WidgetStyle,
+    ClockConfig, ClockPosition, CornerRadii, ElementData, ElementStyle, EventResult, GridItem,
+    GridView, GridViewStyle, ListView, ListViewStyle, TaskPanelState, TaskPanelStyle, Textbox,
+    Widget, WidgetState, WidgetStyle,
 };
 
 /// Cursor blink timer ID
@@ -110,6 +113,165 @@ fn fuzzy_match(target: &str, query: &str) -> Option<i32> {
     } else {
         None
     }
+}
+
+/// Get the HyDE themes directory path
+fn hyde_themes_dir() -> Option<PathBuf> {
+    // First, try relative to exe: ../hyde/themes/ (for portable installs)
+    let exe_relative = exe_dir().join("../hyde/themes");
+    if exe_relative.is_dir() {
+        log!("Found HyDE themes at exe-relative path: {:?}", exe_relative);
+        return Some(exe_relative);
+    }
+
+    // Try standard HyDE location: ~/.config/hyde/themes/
+    if let Some(home) = std::env::var_os("HOME") {
+        let path = PathBuf::from(home).join(".config/hyde/themes");
+        if path.is_dir() {
+            return Some(path);
+        }
+    }
+    // Windows fallback: %USERPROFILE%\.config\hyde\themes
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        let path = PathBuf::from(profile).join(".config/hyde/themes");
+        if path.is_dir() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Represents a HyDE theme with its metadata
+#[derive(Clone, Debug)]
+pub struct HydeTheme {
+    /// Theme name (directory name)
+    pub name: String,
+    /// Full path to theme directory
+    pub path: PathBuf,
+    /// Path to first wallpaper (used as thumbnail)
+    pub thumbnail: Option<PathBuf>,
+}
+
+/// Scan for HyDE themes in the themes directory
+fn scan_hyde_themes() -> Vec<HydeTheme> {
+    let Some(themes_dir) = hyde_themes_dir() else {
+        log!("HyDE themes directory not found");
+        return Vec::new();
+    };
+
+    log!("Scanning HyDE themes from: {:?}", themes_dir);
+
+    let mut themes = Vec::new();
+
+    let Ok(entries) = std::fs::read_dir(&themes_dir) else {
+        log!("Failed to read themes directory");
+        return Vec::new();
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        // Look for a thumbnail - prefer theme preview, fallback to first wallpaper
+        let wallpapers_dir = path.join("wallpapers");
+        let thumbnail = find_first_image(&wallpapers_dir);
+
+        themes.push(HydeTheme {
+            name: name.to_string(),
+            path: path.clone(),
+            thumbnail,
+        });
+    }
+
+    // Sort alphabetically
+    themes.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    log!("Found {} HyDE themes", themes.len());
+    themes
+}
+
+/// Scan wallpapers for a specific theme
+fn scan_theme_wallpapers(theme_name: &str) -> Vec<PathBuf> {
+    let Some(themes_dir) = hyde_themes_dir() else {
+        return Vec::new();
+    };
+
+    let wallpapers_dir = themes_dir.join(theme_name).join("wallpapers");
+    if !wallpapers_dir.is_dir() {
+        log!("Wallpapers directory not found for theme: {}", theme_name);
+        return Vec::new();
+    }
+
+    log!("Scanning wallpapers from: {:?}", wallpapers_dir);
+
+    let mut wallpapers = Vec::new();
+
+    let Ok(entries) = std::fs::read_dir(&wallpapers_dir) else {
+        return Vec::new();
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() && is_image_file(&path) {
+            wallpapers.push(path);
+        }
+    }
+
+    // Sort by filename
+    wallpapers.sort_by(|a, b| {
+        let a_name = a.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let b_name = b.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        a_name.cmp(b_name)
+    });
+
+    log!(
+        "Found {} wallpapers for theme: {}",
+        wallpapers.len(),
+        theme_name
+    );
+    wallpapers
+}
+
+/// Check if a path is an image file based on extension
+fn is_image_file(path: &Path) -> bool {
+    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    matches!(
+        ext.to_lowercase().as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif"
+    )
+}
+
+/// Find the first image file in a directory (sorted alphabetically)
+fn find_first_image(dir: &Path) -> Option<PathBuf> {
+    if !dir.is_dir() {
+        return None;
+    }
+
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return None;
+    };
+
+    let mut images: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && is_image_file(p))
+        .collect();
+
+    images.sort_by(|a, b| {
+        let a_name = a.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let b_name = b.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        a_name.cmp(b_name)
+    });
+
+    images.into_iter().next()
 }
 
 /// Child widget layout info
@@ -368,18 +530,26 @@ impl ThemeLayout {
                 "wallpaper-panel",
                 default.wallpaper_panel_radii,
             ),
-            wallpaper_panel_diagonal: theme.get_number(
-                "wallpaper-panel",
-                None,
-                "diagonal-edge",
-                default.wallpaper_panel_diagonal as f64,
-            ) as f32,
-            wallpaper_panel_fade_width: theme.get_number(
-                "wallpaper-panel",
-                None,
-                "fade-width",
-                default.wallpaper_panel_fade_width as f64,
-            ) as f32,
+            wallpaper_panel_diagonal: {
+                let val = theme.get_number(
+                    "wallpaper-panel",
+                    None,
+                    "diagonal-edge",
+                    default.wallpaper_panel_diagonal as f64,
+                ) as f32;
+                log!("ThemeLayout: wallpaper_panel_diagonal = {}", val);
+                val
+            },
+            wallpaper_panel_fade_width: {
+                let val = theme.get_number(
+                    "wallpaper-panel",
+                    None,
+                    "fade-width",
+                    default.wallpaper_panel_fade_width as f64,
+                ) as f32;
+                log!("ThemeLayout: wallpaper_panel_fade_width = {}", val);
+                val
+            },
             wallpaper_panel_fade_color: theme.get_color_opt("wallpaper-panel", None, "fade-color"),
             wallpaper_panel_fade_opacity: theme.get_number(
                 "wallpaper-panel",
@@ -692,6 +862,7 @@ pub struct App {
     config: WindowConfig,
     textbox: Textbox,
     listview: ListView,
+    gridview: GridView,
     /// All available items (unfiltered)
     all_items: Vec<ElementData>,
     /// Usage history for sorting
@@ -714,6 +885,10 @@ pub struct App {
     task_panel: Option<TaskPanelState>,
     /// Task panel style (from theme)
     task_panel_style: TaskPanelStyle,
+    /// Current operating mode (Launcher, ThemePicker, WallpaperPicker)
+    current_mode: Mode,
+    /// Currently selected HyDE theme (for WallpaperPicker to know which theme's wallpapers to show)
+    current_theme: Option<String>,
 }
 
 impl App {
@@ -782,6 +957,13 @@ impl App {
         let listview = ListView::new()
             .with_style(listview_style)
             .with_element_style(element_style);
+
+        // Load gridview style from theme
+        let gridview_style = theme
+            .as_ref()
+            .map(|t| GridViewStyle::from_theme(t, None))
+            .unwrap_or_default();
+        let gridview = GridView::new().with_style(gridview_style);
 
         // Load theme layout settings
         let theme_layout = theme
@@ -857,6 +1039,7 @@ impl App {
             config,
             textbox,
             listview,
+            gridview,
             all_items,
             history,
             layout_ctx,
@@ -869,6 +1052,8 @@ impl App {
             is_visible: false,
             task_panel,
             task_panel_style,
+            current_mode: Mode::default(),
+            current_theme: None,
         })
     }
 
@@ -1027,6 +1212,75 @@ impl App {
     /// Handle an event
     fn handle_event(&mut self, event: &Event) -> EventResult {
         use crate::platform::win32::event::KeyCode;
+
+        // In grid modes, route navigation + Enter + mouse wheel to gridview.
+        // Textbox still handles typing (for future filtering), but we don't use listview.
+        if self.current_mode.uses_grid_view() {
+            // Handle mouse wheel for grid scrolling
+            if let Event::MouseWheel { .. } = event {
+                let result = self.gridview.handle_event(event, &self.layout_ctx);
+                if result.needs_repaint {
+                    return result;
+                }
+            }
+
+            if let Event::KeyDown { key, .. } = event {
+                match *key {
+                    KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Up
+                    | KeyCode::Down
+                    | KeyCode::Home
+                    | KeyCode::End
+                    | KeyCode::PageUp
+                    | KeyCode::PageDown
+                    | KeyCode::Enter => {
+                        let mut result = self.gridview.handle_event(event, &self.layout_ctx);
+
+                        // Handle grid submit based on current mode
+                        if result.submit {
+                            if let Some(item) = self.gridview.selected_item().cloned() {
+                                log!(
+                                    "Grid submit (mode={:?}): '{}' ({})",
+                                    self.current_mode,
+                                    item.title,
+                                    item.user_data
+                                );
+
+                                match self.current_mode {
+                                    Mode::ThemePicker => {
+                                        // Set current theme and switch to WallpaperPicker
+                                        self.current_theme = Some(item.user_data.clone());
+                                        log!("Selected theme: {}", item.user_data);
+                                        self.current_mode = Mode::WallpaperPicker;
+                                        self.on_mode_changed();
+                                        // Force repaint
+                                        self.renderer.mark_dirty();
+                                        invalidate_window(self.hwnd);
+                                    }
+                                    Mode::WallpaperPicker => {
+                                        // Set wallpaper (user_data contains the full path)
+                                        log!("Setting wallpaper: {}", item.user_data);
+                                        self.set_wallpaper(&item.user_data);
+                                        win32::hide_window(self.hwnd);
+                                        self.is_visible = false;
+                                    }
+                                    Mode::Launcher => {
+                                        // Should not happen, but handle gracefully
+                                    }
+                                }
+                            }
+                            result.submit = false;
+                        }
+
+                        if result.consumed {
+                            return result;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         // Handle mouse events for task panel
         match event {
@@ -1418,42 +1672,52 @@ impl App {
         EventResult::none()
     }
 
-    /// Run a PowerShell script
+    /// Run a PowerShell script in a visible terminal window
     fn run_powershell_script(&self, script: &str) -> Result<(), windows::core::Error> {
         use std::os::windows::process::CommandExt;
         use std::process::Command;
 
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
         const DETACHED_PROCESS: u32 = 0x00000008;
 
-        // Check if it's a file path or inline command
-        let result = if script.ends_with(".ps1") {
-            // Run as script file
-            Command::new("powershell")
-                .args([
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-File",
-                    script,
-                ])
-                .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
-                .spawn()
+        log!("Running task in terminal: {}", script);
+
+        // Build the full PowerShell command line
+        let ps_args = if script.ends_with(".ps1") {
+            format!("-ExecutionPolicy Bypass -NoExit -File \"{}\"", script)
         } else {
-            // Run as inline command
-            Command::new("powershell")
-                .args([
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-Command",
-                    script,
-                ])
-                .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
-                .spawn()
+            // For inline commands, wrap in a script block to handle complex commands
+            format!("-ExecutionPolicy Bypass -NoExit -Command \"{}\"", script)
         };
+
+        // Try Windows Terminal first (modern Windows 10/11)
+        // wt syntax: wt new-tab powershell -NoExit -Command "..."
+        let result = Command::new("wt")
+            .arg("new-tab")
+            .arg("--")
+            .arg("powershell")
+            .arg("-ExecutionPolicy")
+            .arg("Bypass")
+            .arg("-NoExit")
+            .arg("-Command")
+            .arg(script)
+            .creation_flags(DETACHED_PROCESS)
+            .spawn();
+
+        if result.is_ok() {
+            log!("Launched in Windows Terminal: {}", script);
+            return Ok(());
+        }
+
+        // Fall back to starting PowerShell directly with a visible window
+        log!("Windows Terminal not found, falling back to PowerShell directly");
+        let result = Command::new("powershell")
+            .arg("-ExecutionPolicy")
+            .arg("Bypass")
+            .arg("-NoExit")
+            .arg("-Command")
+            .arg(script)
+            .creation_flags(DETACHED_PROCESS)
+            .spawn();
 
         match result {
             Ok(_) => {
@@ -1490,6 +1754,86 @@ impl App {
                 log!("Failed to spawn {}: {}", command, e);
                 Err(windows::core::Error::from_win32())
             }
+        }
+    }
+
+    /// Set the desktop wallpaper
+    fn set_wallpaper(&self, path: &str) {
+        use std::fs;
+
+        log!("App::set_wallpaper() called with: {}", path);
+
+        // Normalize the path - replace forward slashes and resolve ..
+        // Don't use canonicalize() as it creates UNC paths on network shares
+        let normalized = path
+            .replace('/', "\\")
+            .replace("\\.\\", "\\")
+            .replace("\\..\\", "\\__PARENT__\\");
+
+        // Simple parent resolution: repeatedly replace \dir\__PARENT__\ with \
+        let mut result = normalized;
+        loop {
+            let before = result.clone();
+            // Find pattern like \something\__PARENT__\ and remove both
+            if let Some(parent_pos) = result.find("\\__PARENT__\\") {
+                // Find the start of the directory before __PARENT__
+                if let Some(dir_start) = result[..parent_pos].rfind('\\') {
+                    result = format!("{}{}", &result[..dir_start], &result[parent_pos + 11..]);
+                } else {
+                    // No parent dir to remove, just remove __PARENT__
+                    result = result.replace("\\__PARENT__", "");
+                    break;
+                }
+            } else {
+                break;
+            }
+            if before == result {
+                break;
+            }
+        }
+
+        log!("Normalized path: {}", result);
+
+        // Check if path is on a network share (starts with \\ or contains network indicators)
+        // If so, copy to a local temp file first to avoid SystemParametersInfoW issues
+        let final_path = if result.starts_with("\\\\")
+            || result.contains("\\Desktop\\Shared\\")
+            || result.contains(":\\Users\\") && result.contains("\\Desktop\\Shared\\")
+        {
+            log!("Path appears to be on network share, copying to local temp...");
+
+            // Get the file extension
+            let extension = std::path::Path::new(&result)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("jpg");
+
+            // Create temp path in user's temp directory
+            let temp_dir = std::env::temp_dir();
+            let temp_path = temp_dir.join(format!("wolfy_wallpaper.{}", extension));
+
+            log!("Copying to: {:?}", temp_path);
+
+            match fs::copy(&result, &temp_path) {
+                Ok(bytes) => {
+                    log!("Copied {} bytes to temp file", bytes);
+                    temp_path.to_string_lossy().to_string()
+                }
+                Err(e) => {
+                    log!("Failed to copy to temp: {:?}, trying original path", e);
+                    result
+                }
+            }
+        } else {
+            result
+        };
+
+        log!("Final path for wallpaper: {}", final_path);
+
+        if set_wallpaper(&final_path) {
+            log!("Wallpaper set successfully");
+        } else {
+            log!("Failed to set wallpaper");
         }
     }
 
@@ -1588,6 +1932,11 @@ impl App {
         self.listview.set_style(listview_style);
         self.listview.set_element_style(element_style);
         log!("  Updated listview styles");
+
+        // Update gridview style
+        let gridview_style = GridViewStyle::from_theme(&theme, None);
+        self.gridview.set_style(gridview_style);
+        log!("  Updated gridview style");
 
         // Update theme layout settings
         self.theme_layout = ThemeLayout::from_theme(&theme);
@@ -1722,14 +2071,24 @@ impl App {
         let content_width = width as f32 - mainbox_padding * 2.0;
         let content_height = height as f32 - mainbox_padding * 2.0;
 
-        // Calculate layout for each mainbox child
-        let child_layouts = self.theme_layout.calculate_mainbox_children_bounds(
-            content_x,
-            content_y,
-            content_width,
-            content_height,
-            scale,
-        );
+        // Calculate layout for each mainbox child.
+        // In picker modes we want a full-width listbox/grid, so we skip the wallpaper panel.
+        let child_layouts = if self.current_mode.has_wallpaper_panel() {
+            self.theme_layout.calculate_mainbox_children_bounds(
+                content_x,
+                content_y,
+                content_width,
+                content_height,
+                scale,
+            )
+        } else {
+            vec![ChildLayout {
+                name: "listbox".to_string(),
+                bounds: Rect::new(content_x, content_y, content_width, content_height),
+                expand: true,
+                fixed_width: None,
+            }]
+        };
 
         log!(
             "  Mainbox children: {:?}",
@@ -1771,11 +2130,29 @@ impl App {
                 listbox.height - listview_padding_top - listview_padding_bottom,
             );
 
-            if listview_rect.height > 0.0 && !self.listview.is_empty() {
-                log!("  Rendering listview ({} items)...", self.listview.len());
-                let _ = self
-                    .listview
-                    .render(&mut self.renderer, listview_rect, &self.layout_ctx);
+            if listview_rect.height > 0.0 {
+                // Keep widget bounds up-to-date for keyboard navigation/scroll logic
+                if self.current_mode.uses_grid_view() {
+                    self.gridview.arrange(listview_rect, &self.layout_ctx);
+                    if !self.gridview.is_empty() {
+                        log!("  Rendering gridview ({} items)...", self.gridview.len());
+                        let _ = self.gridview.render(
+                            &mut self.renderer,
+                            listview_rect,
+                            &self.layout_ctx,
+                        );
+                    }
+                } else {
+                    self.listview.arrange(listview_rect, &self.layout_ctx);
+                    if !self.listview.is_empty() {
+                        log!("  Rendering listview ({} items)...", self.listview.len());
+                        let _ = self.listview.render(
+                            &mut self.renderer,
+                            listview_rect,
+                            &self.layout_ctx,
+                        );
+                    }
+                }
             }
         }
 
@@ -1821,7 +2198,11 @@ impl App {
             }
             "listbox" => {
                 let radii = self.theme_layout.listbox_radii.scaled(scale);
-                let diagonal = self.theme_layout.wallpaper_panel_diagonal * scale;
+                let diagonal = if self.current_mode.has_wallpaper_panel() {
+                    self.theme_layout.wallpaper_panel_diagonal * scale
+                } else {
+                    0.0
+                };
                 // Extend the listbox to the LEFT to fill the diagonal gap
                 // The listbox needs to go underneath the wallpaper panel's diagonal edge
                 self.draw_right_panel(
@@ -1932,8 +2313,8 @@ impl App {
             self.draw_clock(x, y, width, height);
         }
 
-        // Draw task panel overlay if enabled and has tasks
-        if self.task_panel_style.enabled {
+        // Draw task panel overlay if enabled, has tasks, AND we're in Launcher mode
+        if self.task_panel_style.enabled && self.current_mode.has_task_panel() {
             if let Some(ref mut task_panel) = self.task_panel {
                 if task_panel.has_tasks() {
                     self.draw_task_panel(x, y, width, height);
@@ -2705,69 +3086,248 @@ impl App {
         self.textbox.text()
     }
 
-    /// Toggle window visibility (called from hotkey)
-    pub fn toggle_visibility(&mut self) {
-        log!("toggle_visibility() called, is_visible={}", self.is_visible);
+    /// Get current mode
+    pub fn current_mode(&self) -> Mode {
+        self.current_mode
+    }
 
-        // Toggle based on our tracked state, not IsWindowVisible
-        // (IsWindowVisible can lag behind due to animation/async hide)
+    /// Show the window in a specific mode
+    ///
+    /// - If window is hidden, show it in the requested mode
+    /// - If window is visible in the SAME mode, hide it (toggle behavior)
+    /// - If window is visible in a DIFFERENT mode, switch to the new mode
+    pub fn show_mode(&mut self, mode: Mode) {
+        log!(
+            "show_mode({:?}) called, is_visible={}, current_mode={:?}",
+            mode,
+            self.is_visible,
+            self.current_mode
+        );
+
         if self.is_visible {
-            // Hide the window
-            log!("  Hiding window...");
-            self.is_visible = false;
-            self.textbox.clear();
-            win32::hide_window(self.hwnd);
-            self.stop_cursor_timer();
-            self.stop_animation_timer();
-            self.stop_clock_timer();
-            self.animator.clear();
-            log!("  Window hidden");
-        } else {
-            // Show the window
-            log!("  Showing window...");
-            self.is_visible = true;
-
-            // Actually show the window
-            win32::show_window(self.hwnd);
-
-            // Reposition window with correct DPI scaling before showing content
-            win32::reposition_window(self.hwnd, &self.config);
-
-            // Force renderer to recreate buffers at new size
-            let _ = self.renderer.handle_resize();
-
-            // Clear cached bitmap - it was created on the old render target
-            // and will cause D2D errors if used on the new one
-            self.background_bitmap = None;
-            self.background_bitmap_path = None;
-
-            self.textbox.set_state(WidgetState::Focused);
-            self.textbox.show_cursor();
-            self.start_cursor_timer();
-
-            // Reset task panel focus to list view (always start unfocused/compact)
-            if let Some(ref mut task_panel) = self.task_panel {
-                task_panel.set_focus(false);
+            if self.current_mode == mode {
+                // Same mode hotkey pressed while visible = toggle off
+                log!("  Same mode, hiding window");
+                self.hide();
+                return;
+            } else {
+                // Different mode hotkey = switch modes
+                log!("  Switching from {:?} to {:?}", self.current_mode, mode);
+                self.current_mode = mode;
+                self.on_mode_changed();
+                // Force repaint for the new mode
+                self.renderer.mark_dirty();
+                invalidate_window(self.hwnd);
+                return;
             }
-
-            // Initialize listview with all items
-            self.listview.set_items(self.all_items.clone());
-
-            // Mark renderer as dirty to force a full render on first frame
-            self.renderer.mark_dirty();
-
-            // Start fade-in animation
-            // Note: Clock timer is started after animation completes to avoid flicker
-            self.animator.start_fade_in();
-            self.start_animation_timer();
-            log!("  Started fade-in animation");
-
-            // Force an immediate paint to render content at animation start opacity
-            // This ensures we have rendered content before the animation timer starts
-            // updating just the opacity
-            self.paint();
-            log!("  Window shown, initial paint complete");
         }
-        log!("toggle_visibility() completed");
+
+        // Window is hidden, show it in the requested mode
+        self.current_mode = mode;
+        self.show();
+    }
+
+    /// Resize window based on current mode
+    /// Returns true if size actually changed
+    fn resize_for_mode(&mut self) -> bool {
+        let (target_width, target_height) = match self.current_mode {
+            Mode::Launcher => (self.config.width, self.config.height),
+            Mode::ThemePicker | Mode::WallpaperPicker => {
+                let monitor_width = get_monitor_width();
+                let grid_width = (monitor_width - 60).max(800); // 30px padding on each side
+                let grid_height = 520; // Taller for grid view
+                (grid_width, grid_height)
+            }
+        };
+
+        // Check current window size to avoid unnecessary resize
+        let current_size = self.renderer.get_size();
+        let dpi_scale = self.renderer.dpi().scale_factor;
+        let scaled_target_width = (target_width as f32 * dpi_scale) as i32;
+        let scaled_target_height = (target_height as f32 * dpi_scale) as i32;
+
+        if current_size.0 == scaled_target_width && current_size.1 == scaled_target_height {
+            log!(
+                "resize_for_mode: already at target size {}x{}, skipping",
+                target_width,
+                target_height
+            );
+            return false;
+        }
+
+        log!(
+            "resize_for_mode: resizing from {:?} to {}x{}",
+            current_size,
+            target_width,
+            target_height
+        );
+
+        match self.current_mode {
+            Mode::Launcher => {
+                win32::reposition_window(self.hwnd, &self.config);
+            }
+            Mode::ThemePicker | Mode::WallpaperPicker => {
+                resize_window(self.hwnd, target_width, target_height, 0.4);
+            }
+        }
+
+        // Force renderer to recreate buffers at new size
+        let _ = self.renderer.handle_resize();
+
+        // Clear cached bitmap since size changed
+        self.background_bitmap = None;
+        self.background_bitmap_path = None;
+
+        true
+    }
+
+    /// Called when mode changes while window is visible
+    fn on_mode_changed(&mut self) {
+        log!("on_mode_changed() to {:?}", self.current_mode);
+
+        // Hide window temporarily to avoid flash during resize
+        let needs_resize = {
+            let (target_width, target_height) = match self.current_mode {
+                Mode::Launcher => (self.config.width, self.config.height),
+                Mode::ThemePicker | Mode::WallpaperPicker => {
+                    let monitor_width = get_monitor_width();
+                    ((monitor_width - 60).max(800), 520)
+                }
+            };
+            let current_size = self.renderer.get_size();
+            let dpi_scale = self.renderer.dpi().scale_factor;
+            let scaled_w = (target_width as f32 * dpi_scale) as i32;
+            let scaled_h = (target_height as f32 * dpi_scale) as i32;
+            current_size.0 != scaled_w || current_size.1 != scaled_h
+        };
+
+        if needs_resize {
+            // Hide, resize, then show to avoid flash
+            win32::hide_window(self.hwnd);
+            self.resize_for_mode();
+            win32::show_window(self.hwnd);
+        }
+
+        // Setup content for the mode
+        self.setup_mode_content();
+    }
+
+    /// Setup content for the current mode (without resizing)
+    fn setup_mode_content(&mut self) {
+        match self.current_mode {
+            Mode::Launcher => {
+                // Reset textbox and show all apps
+                self.textbox.clear();
+                self.listview.set_items(self.all_items.clone());
+                self.textbox.set_state(WidgetState::Focused);
+            }
+            Mode::ThemePicker => {
+                log!("  ThemePicker mode - scanning HyDE themes");
+                self.textbox.clear();
+                self.listview.set_items(vec![]);
+
+                let themes = scan_hyde_themes();
+                let items: Vec<GridItem> = themes
+                    .into_iter()
+                    .map(|theme| {
+                        let mut item = GridItem::new(&theme.name, &theme.name);
+                        if let Some(thumb) = theme.thumbnail {
+                            item = item.with_image(thumb.to_string_lossy().to_string());
+                        }
+                        item
+                    })
+                    .collect();
+
+                log!("  Loaded {} themes into grid", items.len());
+                self.gridview.set_items(items);
+            }
+            Mode::WallpaperPicker => {
+                log!("  WallpaperPicker mode - scanning wallpapers");
+                self.textbox.clear();
+                self.listview.set_items(vec![]);
+
+                // Use current_theme if set, otherwise show nothing or a message
+                let items: Vec<GridItem> = if let Some(ref theme_name) = self.current_theme {
+                    let wallpapers = scan_theme_wallpapers(theme_name);
+                    wallpapers
+                        .into_iter()
+                        .map(|wp| {
+                            let filename = wp
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("Wallpaper");
+                            // user_data = full path for setting wallpaper
+                            GridItem::new(filename, wp.to_string_lossy().to_string())
+                                .with_image(wp.to_string_lossy().to_string())
+                        })
+                        .collect()
+                } else {
+                    log!("  No theme selected - wallpaper grid will be empty");
+                    Vec::new()
+                };
+
+                log!("  Loaded {} wallpapers into grid", items.len());
+                self.gridview.set_items(items);
+            }
+        }
+
+        // Reset task panel focus when switching modes
+        if let Some(ref mut task_panel) = self.task_panel {
+            task_panel.set_focus(false);
+        }
+    }
+
+    /// Hide the window
+    pub fn hide(&mut self) {
+        if !self.is_visible {
+            log!("hide() called but window already hidden - ignoring");
+            return;
+        }
+        log!("hide() - hiding window");
+        self.is_visible = false;
+        self.textbox.clear();
+        win32::hide_window(self.hwnd);
+        self.stop_cursor_timer();
+        self.stop_animation_timer();
+        self.stop_clock_timer();
+        self.animator.clear();
+        log!("hide() completed");
+    }
+
+    /// Show the window (internal helper)
+    pub fn show(&mut self) {
+        log!("show() - showing window in {:?} mode", self.current_mode);
+        self.is_visible = true;
+
+        // Resize window based on mode (this also updates renderer buffers)
+        self.resize_for_mode();
+
+        // Actually show the window
+        win32::show_window(self.hwnd);
+
+        // Setup based on mode (don't call resize_for_mode again)
+        self.setup_mode_content();
+
+        self.textbox.show_cursor();
+        self.start_cursor_timer();
+
+        // Mark renderer as dirty to force a full render
+        self.renderer.mark_dirty();
+
+        // Start fade-in animation
+        self.animator.start_fade_in();
+        self.start_animation_timer();
+        log!("  Started fade-in animation");
+
+        // Force an immediate paint
+        self.paint();
+        log!("show() completed");
+    }
+
+    /// Toggle window visibility (called from hotkey) - legacy method
+    /// Now delegates to show_mode with the current mode
+    pub fn toggle_visibility(&mut self) {
+        log!("toggle_visibility() called, delegating to show_mode");
+        self.show_mode(self.current_mode);
     }
 }

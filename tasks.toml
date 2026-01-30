@@ -7,58 +7,53 @@ position = "left"
 
 # Development tools group
 [[groups]]
-name = "Dev"
+name = "PF"
 icon = "\uf121"
 expanded = true
 
 [[groups.tasks]]
-name = "Start Docker"
+name = "List Files"
 icon = "\uf308"
-script = "Start-Service docker"
+script = "Get-ChildItem"
 
 [[groups.tasks]]
-name = "Open VS Code"
+name = "System Info"
 icon = "\uf0a1"
-script = "code ."
+script = "Get-ComputerInfo | Select-Object WindowsVersion, OsArchitecture, CsName"
 
 [[groups.tasks]]
-name = "Open Terminal"
+name = "Network Status"
 icon = "\ue795"
-script = "wt"
+script = "ipconfig"
 
 # System utilities group
 [[groups]]
-name = "System"
+name = "FCW"
 icon = "\uf013"
 expanded = false
 
 [[groups.tasks]]
-name = "Disk Cleanup"
+name = "Disk Usage"
 icon = "\uf1c0"
-script = "cleanmgr"
+script = "Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free -AutoSize"
 
 [[groups.tasks]]
-name = "Task Manager"
+name = "Running Processes"
 icon = "\uf0ae"
-script = "taskmgr"
-
-[[groups.tasks]]
-name = "System Info"
-icon = "\uf05a"
-script = "msinfo32"
+script = "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU, WorkingSet"
 
 # Network tools group
 [[groups]]
-name = "Network"
+name = "Agents"
 icon = "\uf0ac"
 expanded = false
 
 [[groups.tasks]]
-name = "Flush DNS"
+name = "DNS Lookup"
 icon = "\uf0ac"
-script = "ipconfig /flushdns"
+script = "Resolve-DnsName google.com"
 
 [[groups.tasks]]
-name = "Network Status"
+name = "Ping Test"
 icon = "\uf0e8"
-script = "netstat -an | Out-GridView"
+script = "Test-Connection -ComputerName google.com -Count 4"

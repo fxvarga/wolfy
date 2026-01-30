@@ -7,8 +7,15 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::WM_HOTKEY;
 
-/// Hotkey identifier for toggle
+/// Hotkey identifier for toggle (legacy, kept for compatibility)
 pub const HOTKEY_ID_TOGGLE: i32 = 1;
+
+/// Hotkey ID for App Launcher mode (Ctrl+0)
+pub const HOTKEY_ID_LAUNCHER: i32 = 1;
+/// Hotkey ID for Theme Picker mode (Ctrl+1)
+pub const HOTKEY_ID_THEME: i32 = 2;
+/// Hotkey ID for Wallpaper Picker mode (Ctrl+2)
+pub const HOTKEY_ID_WALLPAPER: i32 = 3;
 
 // Virtual key codes
 const VK_SPACE: u32 = 0x20;
@@ -160,6 +167,44 @@ impl HotkeyConfig {
     }
 }
 
+/// Get the default hotkeys for all modes
+/// Returns: [Launcher (Ctrl+0), Theme (Ctrl+1), Wallpaper (Ctrl+2)]
+pub fn default_mode_hotkeys() -> [HotkeyConfig; 3] {
+    [
+        HotkeyConfig::new(HOTKEY_ID_LAUNCHER, MOD_CONTROL.0, VK_0), // Ctrl+0
+        HotkeyConfig::new(HOTKEY_ID_THEME, MOD_CONTROL.0, VK_0 + 1), // Ctrl+1
+        HotkeyConfig::new(HOTKEY_ID_WALLPAPER, MOD_CONTROL.0, VK_0 + 2), // Ctrl+2
+    ]
+}
+
+/// Parse a hotkey string and assign a specific ID
+/// Like parse_hotkey_string but allows specifying the hotkey ID
+pub fn parse_hotkey_string_with_id(s: &str, id: i32) -> Option<HotkeyConfig> {
+    parse_hotkey_string(s).map(|mut config| {
+        config.id = id;
+        config
+    })
+}
+
+/// Register multiple hotkeys at once
+/// Returns the number of successfully registered hotkeys
+pub fn register_hotkeys(hwnd: HWND, hotkeys: &[HotkeyConfig]) -> usize {
+    let mut registered = 0;
+    for hotkey in hotkeys {
+        if hotkey.register(hwnd).is_ok() {
+            registered += 1;
+        }
+    }
+    registered
+}
+
+/// Unregister multiple hotkeys at once
+pub fn unregister_hotkeys(hwnd: HWND, hotkeys: &[HotkeyConfig]) {
+    for hotkey in hotkeys {
+        hotkey.unregister(hwnd);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,5 +280,35 @@ mod tests {
     #[test]
     fn test_display_name() {
         assert_eq!(DEFAULT_TOGGLE_HOTKEY.display_name(), "Alt+Space");
+    }
+
+    #[test]
+    fn test_default_mode_hotkeys() {
+        let hotkeys = default_mode_hotkeys();
+        assert_eq!(hotkeys.len(), 3);
+
+        // Launcher: Ctrl+0
+        assert_eq!(hotkeys[0].id, HOTKEY_ID_LAUNCHER);
+        assert_eq!(hotkeys[0].modifiers, MOD_CONTROL.0);
+        assert_eq!(hotkeys[0].vk_code, VK_0);
+        assert_eq!(hotkeys[0].display_name(), "Ctrl+0");
+
+        // Theme: Ctrl+1
+        assert_eq!(hotkeys[1].id, HOTKEY_ID_THEME);
+        assert_eq!(hotkeys[1].vk_code, VK_0 + 1);
+        assert_eq!(hotkeys[1].display_name(), "Ctrl+1");
+
+        // Wallpaper: Ctrl+2
+        assert_eq!(hotkeys[2].id, HOTKEY_ID_WALLPAPER);
+        assert_eq!(hotkeys[2].vk_code, VK_0 + 2);
+        assert_eq!(hotkeys[2].display_name(), "Ctrl+2");
+    }
+
+    #[test]
+    fn test_parse_hotkey_string_with_id() {
+        let config = parse_hotkey_string_with_id("ctrl+5", HOTKEY_ID_THEME).unwrap();
+        assert_eq!(config.id, HOTKEY_ID_THEME);
+        assert_eq!(config.vk_code, VK_0 + 5);
+        assert_eq!(config.modifiers, MOD_CONTROL.0);
     }
 }

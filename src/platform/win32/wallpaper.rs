@@ -1,4 +1,4 @@
-//! Windows wallpaper detection
+//! Windows wallpaper detection and setting
 //!
 //! Detects the current desktop wallpaper path using:
 //! 1. IDesktopWallpaper COM interface (Windows 8+, multi-monitor support)
@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use windows::core::{Interface, PCWSTR, PWSTR};
+use windows::core::PCWSTR;
 use windows::Win32::Foundation::MAX_PATH;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
@@ -189,4 +189,60 @@ pub fn get_monitor_count() -> u32 {
     }
 
     1 // Assume at least one monitor
+}
+
+/// Set the desktop wallpaper
+///
+/// Uses PowerShell to set the wallpaper (most reliable cross-version method).
+/// Returns true if successful, false otherwise.
+pub fn set_wallpaper(path: &str) -> bool {
+    use std::process::Command;
+
+    crate::log!("set_wallpaper() called with path: {}", path);
+
+    // Verify the file exists first
+    if !std::path::Path::new(path).exists() {
+        crate::log!("set_wallpaper() failed: file does not exist");
+        return false;
+    }
+
+    // Escape the path for PowerShell
+    let escaped_path = path.replace("'", "''");
+
+    // PowerShell command to set wallpaper
+    let ps_script = format!(
+        r#"Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Wallpaper {{
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+}}
+"@
+[Wallpaper]::SystemParametersInfo(0x0014, 0, '{}', 0x01 -bor 0x02)"#,
+        escaped_path
+    );
+
+    crate::log!("set_wallpaper() running PowerShell command...");
+
+    let result = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+        .output();
+
+    match result {
+        Ok(output) => {
+            if output.status.success() {
+                crate::log!("set_wallpaper() succeeded");
+                true
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                crate::log!("set_wallpaper() PowerShell failed: {}", stderr);
+                false
+            }
+        }
+        Err(e) => {
+            crate::log!("set_wallpaper() failed to run PowerShell: {:?}", e);
+            false
+        }
+    }
 }
