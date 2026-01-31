@@ -598,7 +598,15 @@ impl GridView {
             }
         };
 
-        let loaded = match loader.load_from_file(Path::new(path)) {
+        // Load at thumbnail size for performance (480px width = 2x typical 240px display)
+        // This avoids loading full 4K wallpapers into memory
+        let thumb_target_width = 480u32;
+        let loaded = match loader.load_scaled(
+            Path::new(path),
+            thumb_target_width,
+            0, // Height auto-calculated to maintain aspect ratio
+            crate::theme::types::ImageScale::Width,
+        ) {
             Ok(img) => img,
             Err(e) => {
                 crate::log!("GridView: failed to load image '{}': {:?}", path, e);

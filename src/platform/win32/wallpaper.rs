@@ -193,18 +193,82 @@ pub fn get_monitor_count() -> u32 {
 
 /// Set the desktop wallpaper
 ///
-/// Uses PowerShell to set the wallpaper (most reliable cross-version method).
+/// Uses direct Win32 API call via SystemParametersInfoW for speed.
+/// Falls back to PowerShell if the direct method fails.
 /// Returns true if successful, false otherwise.
 pub fn set_wallpaper(path: &str) -> bool {
-    use std::process::Command;
+    use std::path::Path;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SystemParametersInfoW, SPI_SETDESKWALLPAPER, SPIF_SENDWININICHANGE, SPIF_UPDATEINIFILE,
+        SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    };
 
     crate::log!("set_wallpaper() called with path: {}", path);
 
-    // Verify the file exists first
-    if !std::path::Path::new(path).exists() {
+    // Normalize the path - resolve ../ and ./ segments
+    let normalized_path = match Path::new(path).canonicalize() {
+        Ok(p) => {
+            // Remove the \\?\ prefix that canonicalize adds on Windows
+            let s = p.to_string_lossy().to_string();
+            if s.starts_with(r"\\?\") {
+                s[4..].to_string()
+            } else {
+                s
+            }
+        }
+        Err(e) => {
+            crate::log!("set_wallpaper() failed to canonicalize path: {:?}", e);
+            return false;
+        }
+    };
+
+    crate::log!("set_wallpaper() normalized path: {}", normalized_path);
+
+    // Verify the file exists
+    if !Path::new(&normalized_path).exists() {
         crate::log!("set_wallpaper() failed: file does not exist");
         return false;
     }
+
+    crate::log!("set_wallpaper() file exists, calling SystemParametersInfoW...");
+
+    // Convert path to wide string for Windows API
+    // Use PCWSTR wrapper for proper pointer handling
+    let wide_path: Vec<u16> = normalized_path.encode_utf16().chain(std::iter::once(0)).collect();
+
+    crate::log!("set_wallpaper() wide_path len={}, ptr={:?}", wide_path.len(), wide_path.as_ptr());
+
+    // Try direct Win32 API call first (much faster than PowerShell)
+    // Note: SystemParametersInfoW expects pvParam as a pointer to a null-terminated wide string
+    // We use SPIF_UPDATEINIFILE only (not SPIF_SENDWININICHANGE) to avoid broadcast message issues
+    let result = unsafe {
+        SystemParametersInfoW(
+            SPI_SETDESKWALLPAPER,
+            0,
+            Some(wide_path.as_ptr() as *mut std::ffi::c_void),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(SPIF_UPDATEINIFILE.0),
+        )
+    };
+
+    crate::log!("set_wallpaper() SystemParametersInfoW returned: {:?}", result);
+
+    if result.is_ok() {
+        crate::log!("set_wallpaper() succeeded via Win32 API");
+        return true;
+    }
+
+    crate::log!("set_wallpaper() Win32 API failed, falling back to PowerShell");
+
+    // Fallback to PowerShell (hidden window, no profile for speed)
+    set_wallpaper_powershell(&normalized_path)
+}
+
+/// Set wallpaper using PowerShell (fallback method)
+fn set_wallpaper_powershell(path: &str) -> bool {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
 
     // Escape the path for PowerShell
     let escaped_path = path.replace("'", "''");
@@ -223,16 +287,17 @@ public class Wallpaper {{
         escaped_path
     );
 
-    crate::log!("set_wallpaper() running PowerShell command...");
+    crate::log!("set_wallpaper() running PowerShell command (hidden)...");
 
     let result = Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
 
     match result {
         Ok(output) => {
             if output.status.success() {
-                crate::log!("set_wallpaper() succeeded");
+                crate::log!("set_wallpaper() succeeded via PowerShell");
                 true
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
