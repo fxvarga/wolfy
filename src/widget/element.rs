@@ -294,18 +294,24 @@ impl Widget for Element {
             self.style.text_color
         };
 
+        // Scale all dimensions with DPI (like task panel does)
+        let scale = _ctx.scale_factor;
+        let scaled_padding_h = self.style.padding_horizontal * scale;
+        let scaled_icon_size = self.style.icon_size * scale;
+        let scaled_icon_spacing = self.style.icon_spacing * scale;
+        let scaled_font_size = self.style.font_size * scale;
+
         // Calculate text position (leaving room for icon)
-        let text_x =
-            rect.x + self.style.padding_horizontal + self.style.icon_size + self.style.icon_spacing;
+        let text_x = rect.x + scaled_padding_h + scaled_icon_size + scaled_icon_spacing;
         let text_width = rect.width
-            - self.style.padding_horizontal * 2.0
-            - self.style.icon_size
-            - self.style.icon_spacing;
+            - scaled_padding_h * 2.0
+            - scaled_icon_size
+            - scaled_icon_spacing;
 
         // Create text format fresh (like Textbox does)
         let format = match renderer.create_text_format(
             &self.style.font_family,
-            self.style.font_size,
+            scaled_font_size,
             false,
             false,
         ) {
@@ -341,15 +347,14 @@ impl Widget for Element {
         // Draw icon if we have an icon path
         if let Some(ref icon_path) = self.data.icon_path {
             // Calculate icon position - vertically centered in the element
-            let icon_size = self.style.icon_size;
-            let icon_x = rect.x + self.style.padding_horizontal;
-            let icon_y = rect.y + (rect.height - icon_size) / 2.0;
+            let icon_x = rect.x + scaled_padding_h;
+            let icon_y = rect.y + (rect.height - scaled_icon_size) / 2.0;
 
             let icon_rect = D2D_RECT_F {
                 left: icon_x,
                 top: icon_y,
-                right: icon_x + icon_size,
-                bottom: icon_y + icon_size,
+                right: icon_x + scaled_icon_size,
+                bottom: icon_y + scaled_icon_size,
             };
 
             renderer.draw_icon(icon_path, icon_rect, 1.0);

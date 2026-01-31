@@ -1,104 +1,130 @@
-/* Wolfy Default Theme - HyDE Style 11 (DiagonalSplit) */
+/* ═══════════════════════════════════════════════════════════════════════════
+   WOLFY PREMIUM THEME — Inspired by Apple, Netflix & Airbnb Design Systems
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Color scheme - matches HyDE theme.rasi */
+/* Design Tokens - Carefully curated color palette */
 * {
+    /* Primary palette - warm sunset tones from wallpaper */
+    accent-coral:     #f97e72;
+    accent-cyan:      #03edf9;
+    accent-mint:      #72f1b8;
+
+    /* Neutral palette - refined purples */
+    surface-deep:     #1a1625;
+    surface-elevated: #262335;
+    surface-subtle:   #352f44;
+
+    /* Text hierarchy */
+    text-primary:     #ffffff;
+    text-secondary:   #e8e0f0;
+    text-muted:       #a89bc0;
+    text-disabled:    #6b5f80;
+
+    /* Legacy mappings */
     main-bg: #262335e6;
-    main-fg: #ff7edbff;
-    main-br: #f97e72ff;
-    main-ex: #72f1b8ff;
-    select-bg: #03edf9ff;
-    select-fg: #495495ff;
-    text-color: #ff7edb;
+    main-fg: #f97e72;
+    select-bg: #03edf9;
+    select-fg: #1a1625;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   GRID VIEW (for wallpaper/theme picker modes)
+   ───────────────────────────────────────────────────────────────────────────── */
 gridview {
-    spacing: 18;
-    padding: 16;
-    padding-left: 24;
-    padding-right: 24;
-    thumb-size: 230;
-    thumb-radius: 14;
-    label-height: 28;
-    label-color: #d4d4d4;
+    spacing: 20;
+    padding: 20;
+    padding-left: 28;
+    padding-right: 28;
+    thumb-size: 240;
+    thumb-radius: 16;
+    label-height: 32;
+    label-color: #e8e0f0;
     max-columns: 5;
-    font-family: "Segoe UI";
-    font-size: 12;
+    font-family: "Segoe UI Variable Display";
+    font-size: 13;
 }
 
 gridview:selected {
-    border-color: #264f78;
+    border-color: #03edf9;
     border-width: 3;
     label-color: #ffffff;
 }
 
-/* Main window */
+/* ─────────────────────────────────────────────────────────────────────────────
+   WINDOW — The stage for everything
+   ───────────────────────────────────────────────────────────────────────────── */
 window {
-    width: 920;
-    height: 480;
-    background-color: #2623352c;  /* Window tint - 80% opacity dark purple */
-    border-radius: 16;
-    border-color: #f97e72;
-    /* Hotkey to toggle window (default: alt+space) */
-    /* Options: ctrl+space, alt+space, ctrl+a through ctrl+z, alt+a through alt+z, ctrl+0 through ctrl+9, alt+0 through alt+9 */
+    width: 1200;
+    height: 550;
+    background-color: #1a162520;      /* Ultra-subtle tint - let wallpaper breathe */
+    border-radius: 24;                /* Apple-style generous rounding */
+    border-color: transparent;
     hotkey: "ctrl+0";
-    /* Animation settings */
-    animation-duration: 200;      /* Fade-in duration in milliseconds */
-    animation-easing: ease-out-expo;  /* Options: linear, ease, ease-in, ease-out, ease-in-out, ease-out-cubic, ease-out-quart, ease-out-expo, ease-out-back */
+    animation-duration: 280;          /* Slightly slower = more luxurious */
+    animation-easing: ease-out-expo;
 }
 
-/* Main horizontal container */
+/* ─────────────────────────────────────────────────────────────────────────────
+   MAIN LAYOUT CONTAINER
+   ───────────────────────────────────────────────────────────────────────────── */
 mainbox {
     orientation: horizontal;
     children: [ "wallpaper-panel", "listbox" ];
     spacing: 0;
-    padding: 30;
-    background-color: transparent;  /* Let window tint show through */
+    padding: 0;                       /* Edge-to-edge for cinematic feel */
+    background-color: transparent;
 }
 
-/* Left panel - wallpaper display (inputbar in HyDE) */
+/* ─────────────────────────────────────────────────────────────────────────────
+   WALLPAPER PANEL — The hero moment
+   ───────────────────────────────────────────────────────────────────────────── */
 wallpaper-panel {
     background-image: url("auto", width);
-    background-color: transparent;  /* No overlay on wallpaper */
+    background-color: transparent;
     expand: false;
-    width: 450;
-    border-radius: 16;
+    width: 620;                       /* Golden ratio-ish split */
+    border-radius: 24;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
-    diagonal-edge: 60;  /* Slanted edge offset - creates diagonal from (right, top) to (right-150, bottom) */
-    fade-width: 60;      /* Width of the feathered fade along the diagonal edge */
- 
-    /* Clock overlay settings */
+    diagonal-edge: 80;                /* Dramatic diagonal sweep */
+    fade-width: 100;                  /* Silky smooth gradient blend */
+
+    /* ═══ CLOCK — The centerpiece ═══ */
     clock-enabled: true;
-    clock-position: middle-center;       /* top-left, top-center, top-right, middle-left, middle-center, middle-right, bottom-left, bottom-center, bottom-right */
-    clock-format: "%H:%M:%S";        /* strftime format - 12h: "%I:%M %p", 24h: "%H:%M" or "%H:%M:%S" */
-    clock-date-format: "%a, %b %d";  /* Date format below time - empty string to hide */
-    clock-font-family: "Segoe UI";
-    clock-font-size: 48;             /* Large bold time */
-    clock-date-font-size: 16;        /* Smaller date */
-    clock-text-color: #ffffffee;     /* White with slight transparency */
-    clock-shadow-color: #00000080;   /* 50% black shadow */
-    clock-shadow-offset-x: 2;
-    clock-shadow-offset-y: 2;
-    clock-padding: 20;               /* Distance from panel edges */
+    clock-position: middle-center;    /* Hero placement */
+    clock-format: "%H:%M";            /* Clean, minimal */
+    clock-date-format: "%A, %B %d";   /* Full weekday for elegance */
+    clock-font-family: "Segoe UI Variable Display";
+    clock-font-size: 88;              /* Reduced for high-DPI consistency */
+    clock-date-font-size: 24;         /* Proportionally smaller */
+    clock-text-color: #fffffffa;      /* Near-pure white */
+    clock-shadow-color: #000000b3;    /* Soft, cinematic shadow */
+    clock-shadow-offset-x: 0;         /* Centered glow effect */
+    clock-shadow-offset-y: 3;
+    clock-padding: 30;
 }
 
-/* Right panel - search box and results */
+/* ─────────────────────────────────────────────────────────────────────────────
+   LIST BOX — Frosted glass sidebar
+   ───────────────────────────────────────────────────────────────────────────── */
 listbox {
     orientation: vertical;
     children: [ "dummy", "listview", "dummy" ];
     spacing: 0;
     expand: false;
-    background-color: #262335e6;  /* 90% opacity - nearly opaque */
+    background-color: #1a1625e8;      /* Deep purple, high opacity */
     padding-top: 0;
     padding-right: 0;
     padding-bottom: 0;
     padding-left: 0;
-    border-radius: 16;
+    border-radius: 24;
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
 }
 
-/* Input bar container */
+/* ─────────────────────────────────────────────────────────────────────────────
+   INPUT BAR
+   ───────────────────────────────────────────────────────────────────────────── */
 inputbar {
     orientation: horizontal;
     children: [ "textbox" ];
@@ -106,115 +132,126 @@ inputbar {
     background-color: transparent;
 }
 
-/* Search textbox (entry in HyDE) */
+/* ─────────────────────────────────────────────────────────────────────────────
+   TEXTBOX — Search input
+   ───────────────────────────────────────────────────────────────────────────── */
 textbox {
-    background-color: transparent;  /* Let window tint show through */
-    text-color: #ff7edb;
+    background-color: #ffffff08;
+    text-color: #ffffff;
     border-width: 0;
     border-color: transparent;
-    border-radius: 48;
-    padding-top: 16;
-    padding-right: 16;
-    padding-bottom: 16;
-    padding-left: 16;
-    font-size: 16;
-    font-family: "JetBrainsMono Nerd Font";
-    placeholder-color: #ff7edb80;
-    cursor-color: #ff7edb;
-    selection-color: #03edf9;
+    border-radius: 16;
+    padding-top: 18;
+    padding-right: 20;
+    padding-bottom: 18;
+    padding-left: 20;
+    font-size: 15;
+    font-family: "Segoe UI Variable Text";
+    placeholder-color: #a89bc080;
+    cursor-color: #03edf9;
+    selection-color: #03edf940;
 }
 
 textbox.focused {
-    border-color: #f97e72;
+    border-color: #03edf9;
+    border-width: 2;
 }
 
-/* ListView - scrollable list of results */
+/* ─────────────────────────────────────────────────────────────────────────────
+   LIST VIEW — Netflix-style clean list
+   ───────────────────────────────────────────────────────────────────────────── */
 listview {
     background-color: transparent;
-    text-color: #ff7edb;
+    text-color: #ffffff;
     border-width: 0;
     border-radius: 0;
-    padding-top: 20;
-    padding-right: 10;
-    padding-bottom: 16;
-    padding-left: 12;
-    spacing: 20;
-    lines: 7;
+    padding-top: 16;
+    padding-right: 16;
+    padding-bottom: 24;
+    padding-left: 16;
+    spacing: 4;
+    lines: 9;                         /* More items with smaller height */
     scrollbar-width: 0;
-    scrollbar-color: #ff7edb40;
+    scrollbar-color: #03edf940;
     scrollbar-track-color: transparent;
 }
 
-/* Element - individual list item */
+/* ─────────────────────────────────────────────────────────────────────────────
+   ELEMENT — Individual list items (the money shot)
+   ───────────────────────────────────────────────────────────────────────────── */
 element {
     background-color: transparent;
-    text-color: #ff7edb;
-    subtext-color: #ff7edb80;
-    font-size: 18;
-    font-family: "JetBrainsMono Nerd Font";
-    subtext-font-size: 11;
-    padding-horizontal: 24;
-    padding-vertical: 8;
-    icon-size: 25;
-    icon-spacing: 16;
-    height: 50;
-    border-radius: 8;
+    text-color: #e8e0f0;              /* Soft, easy on eyes */
+    subtext-color: #a89bc0;
+    font-size: 18;                    /* Matches task panel text-size */
+    font-family: "Segoe UI Variable Text";
+    subtext-font-size: 10;
+    padding-horizontal: 14;
+    padding-vertical: 10;
+    icon-size: 22;                    /* Matches task panel icons */
+    icon-spacing: 10;
+    height: 48;                       /* Matches task panel item height */
+    border-radius: 10;                /* Matches task panel radius */
 }
 
 element:selected {
-    background-color: #03edf9;
-    text-color: #495495;
+    background-color: #03edf9;        /* Vibrant cyan pop */
+    text-color: #1a1625;              /* Dark text for contrast */
 }
 
 element:hover {
-    background-color: #ff7edb20;
+    background-color: #ffffff12;      /* Subtle lift on hover */
 }
 
-/* Dummy spacer */
+/* ─────────────────────────────────────────────────────────────────────────────
+   SPACER
+   ───────────────────────────────────────────────────────────────────────────── */
 dummy {
     background-color: transparent;
     expand: true;
 }
 
-/* Task panel - quick-launch tasks overlaid on wallpaper panel */
+/* ─────────────────────────────────────────────────────────────────────────────
+   TASK PANEL — Refined sidebar with premium feel
+   ───────────────────────────────────────────────────────────────────────────── */
 task-panel {
     enabled: true;
-    position: left;                /* left or right within wallpaper panel */
+    position: left;
 
-    /* Panel sizing */
-    compact-width: 58;             /* Unfocused: icons-only */
-    expanded-width: 260;           /* Focused: icon + label + submenu */
+    /* Sizing - generous but not overwhelming */
+    compact-width: 56;
+    expanded-width: 280;
 
-    /* Colors */
-    background-color: #262335e6;   /* Panel background (semi-transparent) */
-    item-background-color: #ffffff14;      /* Hover background */
-    selected-background-color: #38598870;  /* Selected row - subtle blue */
-    icon-color: #cdd6f4;           /* Icon color (normal) */
-    icon-color-hover: #89b4fa;     /* Icon color (hover/selected) */
-    group-icon-color: #f97e72;     /* Group header icon color */
-    text-color: #cdd6f4;           /* Label color */
-    text-color-hover: #ffffffff;   /* Label hover/selected */
-    tree-line-color: #cdd6f4b0;    /* Submenu tree line */
-    chevron-color: #cdd6f4b0;
+    /* Colors - frosted glass aesthetic */
+    background-color: #1a1625c0;              /* Deep, translucent */
+    item-background-color: #ffffff10;         /* Subtle hover */
+    selected-background-color: #03edf930;     /* Cyan glow when selected */
+    icon-color: #e8e0f0;
+    icon-color-hover: #03edf9;                /* Cyan accent on hover */
+    group-icon-color: #f97e72;                /* Coral for groups */
+    text-color: #e8e0f0;
+    text-color-hover: #ffffff;
+    tree-line-color: #a89bc060;
+    chevron-color: #a89bc080;
 
-    /* Typography */
+    /* Typography - clean and readable */
     icon-font-family: "JetBrainsMono Nerd Font";
-    text-font-family: "JetBrainsMono Nerd Font";
-    icon-size: 15;
-    text-size: 12;
+    text-font-family: "Segoe UI Variable Text";
+    icon-size: 22;
+    text-size: 18;
 
-    /* Layout */
-    item-height: 42;
-    item-corner-radius: 10;
-    padding: 10;
-    group-spacing: 10;
+    /* Layout - breathing room */
+    item-height: 48;
+    item-corner-radius: 12;
+    padding: 12;
+    group-spacing: 16;
     item-spacing: 4;
-    border-radius: 10;
-    sub-item-indent: 34;
+    border-radius: 16;
+    sub-item-indent: 32;
 
-    /* ASCII tree drawing characters */
-    chevron-collapsed: ">";
-    chevron-expanded: "v";
-    tree-branch: "|-";
-    tree-corner: "L-";
+    /* Minimal tree characters */
+    chevron-collapsed: "›";
+    chevron-expanded: "˅";
+    tree-branch: "│";
+    tree-corner: "└";
 }

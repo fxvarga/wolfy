@@ -149,6 +149,8 @@ pub struct ListView {
     element_style: ElementStyle,
     /// Cached bounds after arrange
     bounds: Option<Rect>,
+    /// Cached scale factor from last render (for hit testing)
+    cached_scale: f32,
 }
 
 impl ListView {
@@ -163,6 +165,7 @@ impl ListView {
             style: ListViewStyle::default(),
             element_style: ElementStyle::default(),
             bounds: None,
+            cached_scale: 1.0,
         }
     }
 
@@ -394,6 +397,70 @@ impl ListView {
         let visible = self.visible_count();
         (visible as f32 * element_height - self.style.element_spacing).max(0.0)
     }
+
+    /// Hit test to find which element is at the given point
+    /// Returns the absolute index (not relative to scroll)
+    pub fn hit_test(&self, x: f32, y: f32) -> Option<usize> {
+        let bounds = self.bounds.as_ref()?;
+        let scale = self.cached_scale;
+
+        // Check if point is within bounds
+        if x < bounds.x || x > bounds.x + bounds.width
+           || y < bounds.y || y > bounds.y + bounds.height {
+            return None;
+        }
+
+        // Calculate content area with scaled padding
+        let scaled_padding_top = self.style.padding_top * scale;
+        let content_y = bounds.y + scaled_padding_top;
+
+        // Use scaled element height for hit testing
+        let scaled_element_height = self.element_style.height * scale;
+        let scaled_element_spacing = self.style.element_spacing * scale;
+        let element_total_height = scaled_element_height + scaled_element_spacing;
+
+        // Calculate which element was clicked
+        let relative_y = y - content_y;
+        if relative_y < 0.0 {
+            return None;
+        }
+
+        let clicked_row = (relative_y / element_total_height) as usize;
+        let absolute_index = self.scroll_offset + clicked_row;
+
+        if absolute_index < self.elements.len() {
+            Some(absolute_index)
+        } else {
+            None
+        }
+    }
+
+    /// Check if point is within listview bounds
+    pub fn contains_point(&self, x: f32, y: f32) -> bool {
+        if let Some(ref bounds) = self.bounds {
+            x >= bounds.x && x <= bounds.x + bounds.width
+                && y >= bounds.y && y <= bounds.y + bounds.height
+        } else {
+            false
+        }
+    }
+
+    /// Scroll by delta items (positive = down, negative = up)
+    pub fn scroll_by(&mut self, delta: i32) {
+        if self.elements.is_empty() {
+            return;
+        }
+
+        let max_scroll = self.elements.len().saturating_sub(self.style.max_visible_items);
+
+        if delta > 0 {
+            // Scroll down
+            self.scroll_offset = (self.scroll_offset + delta as usize).min(max_scroll);
+        } else {
+            // Scroll up
+            self.scroll_offset = self.scroll_offset.saturating_sub((-delta) as usize);
+        }
+    }
 }
 
 impl Default for ListView {
@@ -459,6 +526,33 @@ impl Widget for ListView {
                     _ => EventResult::none(),
                 }
             }
+            // Mouse wheel scrolling
+            Event::MouseWheel { delta, .. } => {
+                // delta > 0 means scroll up, delta < 0 means scroll down
+                if *delta > 0 {
+                    self.scroll_by(-1);
+                } else if *delta < 0 {
+                    self.scroll_by(1);
+                }
+                EventResult::repaint()
+            }
+            // Mouse click to select
+            Event::MouseDown { x, y, .. } => {
+                if let Some(idx) = self.hit_test(*x as f32, *y as f32) {
+                    self.selected_index = Some(idx);
+                    self.update_selection_state();
+                    // Return submit to trigger action on click
+                    EventResult {
+                        needs_repaint: true,
+                        consumed: true,
+                        text_changed: false,
+                        submit: true,
+                        cancel: false,
+                    }
+                } else {
+                    EventResult::none()
+                }
+            }
             _ => EventResult::none(),
         }
     }
@@ -469,6 +563,8 @@ impl Widget for ListView {
         rect: Rect,
         ctx: &LayoutContext,
     ) -> Result<(), windows::core::Error> {
+        let scale = ctx.scale_factor;
+
         let bounds = D2D_RECT_F {
             left: rect.x,
             top: rect.y,
@@ -476,13 +572,23 @@ impl Widget for ListView {
             bottom: rect.y + rect.height,
         };
 
+        // Scale dimensions for DPI
+        let scaled_border_radius = self.style.border_radius * scale;
+        let scaled_border_width = self.style.border_width * scale;
+        let scaled_padding_left = self.style.padding_left * scale;
+        let scaled_padding_right = self.style.padding_right * scale;
+        let scaled_padding_top = self.style.padding_top * scale;
+        let scaled_element_height = self.element_style.height * scale;
+        let scaled_element_spacing = self.style.element_spacing * scale;
+        let scaled_scrollbar_width = self.style.scrollbar_width * scale;
+
         // Draw background
         if self.style.background_color.a > 0.0 {
-            if self.style.border_radius > 0.0 {
+            if scaled_border_radius > 0.0 {
                 renderer.fill_rounded_rect(
                     bounds,
-                    self.style.border_radius,
-                    self.style.border_radius,
+                    scaled_border_radius,
+                    scaled_border_radius,
                     self.style.background_color,
                 )?;
             } else {
@@ -491,49 +597,49 @@ impl Widget for ListView {
         }
 
         // Draw border
-        if self.style.border_width > 0.0 && self.style.border_color.a > 0.0 {
-            if self.style.border_radius > 0.0 {
+        if scaled_border_width > 0.0 && self.style.border_color.a > 0.0 {
+            if scaled_border_radius > 0.0 {
                 renderer.draw_rounded_rect(
                     bounds,
-                    self.style.border_radius,
-                    self.style.border_radius,
+                    scaled_border_radius,
+                    scaled_border_radius,
                     self.style.border_color,
-                    self.style.border_width,
+                    scaled_border_width,
                 )?;
             } else {
-                renderer.draw_rect(bounds, self.style.border_color, self.style.border_width)?;
+                renderer.draw_rect(bounds, self.style.border_color, scaled_border_width)?;
             }
         }
 
-        // Calculate content area
-        let content_x = rect.x + self.style.padding_left;
-        let content_y = rect.y + self.style.padding_top;
+        // Calculate content area with scaled padding
+        let content_x = rect.x + scaled_padding_left;
+        let content_y = rect.y + scaled_padding_top;
         let scrollbar_space = if self.needs_scrollbar() {
-            self.style.scrollbar_width + 4.0
+            scaled_scrollbar_width + 4.0 * scale
         } else {
             0.0
         };
         let content_width =
-            rect.width - self.style.padding_left - self.style.padding_right - scrollbar_space;
+            rect.width - scaled_padding_left - scaled_padding_right - scrollbar_space;
 
-        // Render visible elements
+        // Render visible elements with scaled heights
         let start = self.scroll_offset;
         let end = (start + self.style.max_visible_items).min(self.elements.len());
-        let element_height = self.element_total_height();
+        let element_total_height = scaled_element_height + scaled_element_spacing;
 
         log!(
             "ListView::render - rendering {} elements (start={}, end={}), element_height={}",
             end - start,
             start,
             end,
-            element_height
+            element_total_height
         );
         for (i, elem) in self.elements[start..end].iter().enumerate() {
             let elem_rect = Rect {
                 x: content_x,
-                y: content_y + (i as f32 * element_height),
+                y: content_y + (i as f32 * element_total_height),
                 width: content_width,
-                height: self.element_style.height,
+                height: scaled_element_height,
             };
             log!(
                 "  Rendering element {} at rect ({},{},{},{})",
@@ -549,18 +655,19 @@ impl Widget for ListView {
         // Draw scrollbar if needed
         if self.needs_scrollbar() {
             let scrollbar_x =
-                rect.x + rect.width - self.style.padding_right - self.style.scrollbar_width;
-            let scrollbar_y = rect.y + self.style.padding_top;
-            let scrollbar_height = self.content_height();
+                rect.x + rect.width - scaled_padding_right - scaled_scrollbar_width;
+            let scrollbar_y = rect.y + scaled_padding_top;
+            let visible = self.visible_count();
+            let scrollbar_height = (visible as f32 * element_total_height - scaled_element_spacing).max(0.0);
 
             // Track
             let track_rect = D2D_RECT_F {
                 left: scrollbar_x,
                 top: scrollbar_y,
-                right: scrollbar_x + self.style.scrollbar_width,
+                right: scrollbar_x + scaled_scrollbar_width,
                 bottom: scrollbar_y + scrollbar_height,
             };
-            let scrollbar_radius = self.style.scrollbar_width / 2.0;
+            let scrollbar_radius = scaled_scrollbar_width / 2.0;
             renderer.fill_rounded_rect(
                 track_rect,
                 scrollbar_radius,
@@ -623,8 +730,9 @@ impl Widget for ListView {
         )
     }
 
-    fn arrange(&mut self, bounds: Rect, _ctx: &LayoutContext) {
+    fn arrange(&mut self, bounds: Rect, ctx: &LayoutContext) {
         self.bounds = Some(bounds);
+        self.cached_scale = ctx.scale_factor;
     }
 
     fn layout_props(&self) -> &LayoutProps {

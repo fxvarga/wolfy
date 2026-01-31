@@ -11,20 +11,11 @@ name = "PF"
 icon = "\uf121"
 expanded = true
 
-[[groups.tasks]]
-name = "List Files"
-icon = "\uf308"
-script = "Get-ChildItem"
 
 [[groups.tasks]]
-name = "System Info"
-icon = "\uf0a1"
-script = "Get-ComputerInfo | Select-Object WindowsVersion, OsArchitecture, CsName"
-
-[[groups.tasks]]
-name = "Network Status"
-icon = "\ue795"
-script = "ipconfig"
+name = "Run Backend"
+icon = "\uf233"
+script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\pfl\\backend\\core_automation_services\\local-runner\\Start-Backend.ps1' -Direct"
 
 # System utilities group
 [[groups]]

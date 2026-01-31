@@ -124,12 +124,22 @@ impl TaskRunner {
 
         log!("PowerShell script: {}", ps_script);
 
-        let child = Command::new("powershell")
+        // Try pwsh (PowerShell 7) first, fall back to powershell (5.1)
+        let child = Command::new("pwsh")
             .args(["-ExecutionPolicy", "Bypass", "-Command", &ps_script])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
+            .or_else(|_| {
+                log!("pwsh not found, falling back to powershell");
+                Command::new("powershell")
+                    .args(["-ExecutionPolicy", "Bypass", "-Command", &ps_script])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .spawn()
+            })
             .map_err(|e| format!("Failed to spawn task: {}", e))?;
 
         log!("Task spawned with PID: {:?}", child.id());

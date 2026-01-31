@@ -1321,7 +1321,7 @@ impl App {
             }
         }
 
-        // Handle mouse events for task panel
+        // Handle mouse events for task panel and listview
         match event {
             Event::MouseMove { x, y } => {
                 return self.handle_mouse_move(*x as f32, *y as f32);
@@ -1332,6 +1332,19 @@ impl App {
                 button: MouseButton::Left,
             } => {
                 return self.handle_mouse_click(*x as f32, *y as f32);
+            }
+            Event::MouseWheel { delta, .. } => {
+                // Route mouse wheel to listview in launcher mode (not grid view)
+                // Scroll regardless of mouse position - the list is the main content
+                if !self.current_mode.uses_grid_view() {
+                    // Scroll: delta > 0 = scroll up, delta < 0 = scroll down
+                    if *delta > 0 {
+                        self.listview.scroll_by(-1);
+                    } else if *delta < 0 {
+                        self.listview.scroll_by(1);
+                    }
+                    return EventResult::repaint();
+                }
             }
             _ => {}
         }
@@ -1658,8 +1671,24 @@ impl App {
         EventResult::none()
     }
 
-    /// Handle mouse click for task panel
+    /// Handle mouse click for task panel and listview
     fn handle_mouse_click(&mut self, x: f32, y: f32) -> EventResult {
+        // Check if click is in listview first (only for non-grid modes)
+        if !self.current_mode.uses_grid_view() && self.listview.contains_point(x, y) {
+            if let Some(idx) = self.listview.hit_test(x, y) {
+                // Select and launch the clicked item
+                self.listview.select(idx);
+                log!("Listview item {} clicked", idx);
+                return EventResult {
+                    needs_repaint: true,
+                    consumed: true,
+                    text_changed: false,
+                    submit: true,  // Trigger the item launch
+                    cancel: false,
+                };
+            }
+        }
+
         // Check if click is in task panel
         if let Some(ref mut task_panel) = self.task_panel {
             if let Some(item_idx) = task_panel.hit_test(x, y) {
@@ -1878,7 +1907,23 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
 
             const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
-            // Try Windows Terminal first
+            // Try Windows Terminal with pwsh (PowerShell 7) first
+            let result = Command::new("wt")
+                .arg("new-tab")
+                .arg("--")
+                .arg("pwsh")
+                .arg("-ExecutionPolicy")
+                .arg("Bypass")
+                .arg("-NoExit")
+                .arg("-File")
+                .arg(&script_path_str)
+                .spawn();
+
+            if result.is_ok() {
+                return;
+            }
+
+            // Try Windows Terminal with powershell (5.1)
             let result = Command::new("wt")
                 .arg("new-tab")
                 .arg("--")
@@ -1894,7 +1939,21 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
                 return;
             }
 
-            // Fall back to PowerShell directly
+            // Fall back to pwsh directly
+            let result = Command::new("pwsh")
+                .arg("-ExecutionPolicy")
+                .arg("Bypass")
+                .arg("-NoExit")
+                .arg("-File")
+                .arg(&script_path_str)
+                .creation_flags(CREATE_NEW_CONSOLE)
+                .spawn();
+
+            if result.is_ok() {
+                return;
+            }
+
+            // Fall back to PowerShell 5.1 directly
             let _ = Command::new("powershell")
                 .arg("-ExecutionPolicy")
                 .arg("Bypass")
