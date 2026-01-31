@@ -109,6 +109,23 @@ impl WindowManager {
 
     /// Show a mode's window, hiding others
     fn show_mode(&mut self, mode: Mode) {
+        // Check if theme needs to be reloaded (set by GridWindow when theme is selected)
+        {
+            let mut state = self.app_state.borrow_mut();
+            if state.theme_needs_reload {
+                state.theme_needs_reload = false;
+                // Get the theme name before dropping the borrow
+                let theme_name = state.current_theme.clone();
+                drop(state); // Release borrow before calling reload_theme
+
+                // Update launcher's current_theme and reload its styling
+                let mut launcher = self.launcher.borrow_mut();
+                launcher.set_current_theme(theme_name);
+                launcher.reload_theme();
+                log!("Theme reloaded after theme picker selection");
+            }
+        }
+
         match mode {
             Mode::Launcher => {
                 // Hide grid windows, show launcher

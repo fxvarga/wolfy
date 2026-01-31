@@ -1,0 +1,51 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   CATPPUCCIN MOCHA — Deep Purple Elegance
+   ═══════════════════════════════════════════════════════════════════════════
+
+   A premium dark theme with rich purple undertones and vibrant cyan accents.
+   Inspired by late-night coding sessions and synthwave aesthetics.
+
+   Palette extracted from: Catppuccin Mocha + Synth Wave influences
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors ─── */
+    surface-deep:           #1a1625;      /* Deepest background */
+    surface-elevated:       #262335;      /* Raised surfaces */
+    surface-subtle:         #352f44;      /* Subtle backgrounds */
+
+    /* ─── Accent Colors ─── */
+    accent-primary:         #03edf9;      /* Vibrant cyan - main accent */
+    accent-secondary:       #f97e72;      /* Warm coral - secondary accent */
+    accent-tertiary:        #72f1b8;      /* Mint green - tertiary accent */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #ffffff;      /* Primary text */
+    text-secondary:         #e8e0f0;      /* Secondary text */
+    text-muted:             #a89bc0;      /* Muted/placeholder text */
+    text-disabled:          #6b5f80;      /* Disabled text */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #1a162520;    /* Ultra-subtle window tint */
+    surface-panel:          #1a1625e8;    /* Panel background (92% opacity) */
+    taskpanel-bg:           #1a1625c0;    /* Task panel (75% opacity) */
+    tailview-bg:            #1a1625f0;    /* Terminal background (94% opacity) */
+
+    input-bg:               #ffffff08;    /* Input field background */
+    hover-bg:               #ffffff12;    /* Hover state background */
+    item-hover-bg:          #ffffff10;    /* List item hover */
+
+    accent-primary-alpha:   #03edf940;    /* Accent with transparency */
+    text-muted-alpha:       #a89bc080;    /* Muted text with transparency */
+
+    tree-line:              #a89bc060;    /* Tree connector lines */
+    chevron:                #a89bc080;    /* Chevron/arrow color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #fffffffa;    /* Clock text (near white) */
+    clock-shadow:           #000000b3;    /* Clock shadow (70% black) */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #03edf9;      /* Selected item background */
+    select-fg:              #1a1625;      /* Selected item text */
+}

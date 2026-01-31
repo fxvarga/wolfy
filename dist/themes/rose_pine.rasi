@@ -1,0 +1,52 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ROSÉ PINE — Elegant Twilight Romance
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Romantic dark theme with purple and rose accents.
+   Inspired by twilight gardens and moonlit evenings.
+   Sophisticated elegance with warm undertones.
+
+   Palette: Rosé Pine (Moon variant)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Twilight) ─── */
+    surface-deep:           #191724;      /* Base - deep purple */
+    surface-elevated:       #1f1d2e;      /* Surface */
+    surface-subtle:         #26233a;      /* Overlay */
+
+    /* ─── Accent Colors (Rose Garden) ─── */
+    accent-primary:         #c4a7e7;      /* Iris - lavender purple */
+    accent-secondary:       #ebbcba;      /* Rose - soft pink */
+    accent-tertiary:        #31748f;      /* Pine - teal accent */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #e0def4;      /* Text - soft white */
+    text-secondary:         #c9c6db;      /* Subtle */
+    text-muted:             #908caa;      /* Muted lavender */
+    text-disabled:          #6e6a86;      /* Disabled */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #19172420;    /* Ultra-subtle purple */
+    surface-panel:          #191724e8;    /* Panel - deep purple */
+    taskpanel-bg:           #191724c0;    /* Task panel */
+    tailview-bg:            #191724f0;    /* Terminal background */
+
+    input-bg:               #c4a7e708;    /* Purple-tinted input */
+    hover-bg:               #c4a7e715;    /* Hover - lavender glow */
+    item-hover-bg:          #c4a7e710;    /* List item hover */
+
+    accent-primary-alpha:   #c4a7e740;    /* Lavender transparency */
+    text-muted-alpha:       #908caa80;    /* Muted with transparency */
+
+    tree-line:              #6e6a8660;    /* Tree connector lines */
+    chevron:                #908caa80;    /* Chevron color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #e0def4fa;    /* Soft white clock */
+    clock-shadow:           #000000b3;    /* Dark shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #c4a7e7;      /* Lavender selection */
+    select-fg:              #191724;      /* Dark text */
+}

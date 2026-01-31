@@ -1,0 +1,51 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   DECAY GREEN — Cyberpunk Terminal Matrix
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Dark, mysterious theme inspired by terminal aesthetics and cyberpunk.
+   Mint green accents on deep navy creates a futuristic hacker vibe.
+
+   Palette: Decay Green + Night City vibes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors ─── */
+    surface-deep:           #151720;      /* Deep navy-black */
+    surface-elevated:       #1a1d2e;      /* Slightly elevated */
+    surface-subtle:         #252838;      /* Subtle backgrounds */
+
+    /* ─── Accent Colors ─── */
+    accent-primary:         #90ceaa;      /* Mint green - the matrix glow */
+    accent-secondary:       #98d3ee;      /* Cyan blue - secondary accent */
+    accent-tertiary:        #95d3af;      /* Soft green - tertiary */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #cbced3;      /* Light gray text */
+    text-secondary:         #a8abb3;      /* Secondary text */
+    text-muted:             #787c88;      /* Muted/placeholder */
+    text-disabled:          #52555f;      /* Disabled text */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #15172020;    /* Ultra-subtle tint */
+    surface-panel:          #151720e8;    /* Panel background */
+    taskpanel-bg:           #151720c0;    /* Task panel */
+    tailview-bg:            #151720f0;    /* Terminal background */
+
+    input-bg:               #90ceaa08;    /* Green-tinted input bg */
+    hover-bg:               #90ceaa15;    /* Hover state */
+    item-hover-bg:          #90ceaa10;    /* List item hover */
+
+    accent-primary-alpha:   #90ceaa40;    /* Mint with transparency */
+    text-muted-alpha:       #787c8880;    /* Muted with transparency */
+
+    tree-line:              #787c8860;    /* Tree connector lines */
+    chevron:                #787c8880;    /* Chevron color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #cbced3fa;    /* Light text */
+    clock-shadow:           #000000b3;    /* Dark shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #90ceaa;      /* Mint green selection */
+    select-fg:              #151720;      /* Dark text on selection */
+}

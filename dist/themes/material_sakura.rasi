@@ -1,0 +1,51 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   MATERIAL SAKURA — Japanese Spring Blossom
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Delicate light theme inspired by cherry blossoms and Japanese aesthetics.
+   Soft pinks and warm whites create a gentle, inviting atmosphere.
+
+   Palette: Rosé Pine Dawn + Material Design pastels
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Soft White) ─── */
+    surface-deep:           #fffaf3;      /* Warm white */
+    surface-elevated:       #faf4ed;      /* Parchment */
+    surface-subtle:         #f2e9e1;      /* Soft beige */
+
+    /* ─── Accent Colors (Cherry Blossom) ─── */
+    accent-primary:         #d7827e;      /* Sakura pink - selection */
+    accent-secondary:       #b4637a;      /* Rose - secondary */
+    accent-tertiary:        #ea9d34;      /* Warm gold - highlight */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #575279;      /* Muted purple text */
+    text-secondary:         #6e6a86;      /* Secondary purple */
+    text-muted:             #9893a5;      /* Muted lavender */
+    text-disabled:          #c4c0d0;      /* Light disabled */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #faf4ed20;    /* Ultra-subtle parchment */
+    surface-panel:          #faf4ede8;    /* Panel - parchment */
+    taskpanel-bg:           #faf4edc0;    /* Task panel */
+    tailview-bg:            #faf4edf0;    /* Terminal background */
+
+    input-bg:               #57527910;    /* Purple-tinted input */
+    hover-bg:               #d7827e18;    /* Hover - sakura glow */
+    item-hover-bg:          #d7827e12;    /* List item hover */
+
+    accent-primary-alpha:   #d7827e40;    /* Pink with transparency */
+    text-muted-alpha:       #9893a580;    /* Muted with transparency */
+
+    tree-line:              #c4c0d060;    /* Tree connector lines */
+    chevron:                #9893a580;    /* Chevron color */
+
+    /* ─── Clock Colors (Light mode) ─── */
+    clock-text:             #575279fa;    /* Purple clock text */
+    clock-shadow:           #ffffff80;    /* Light shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #d7827e;      /* Sakura pink selection */
+    select-fg:              #fffaf3;      /* White text */
+}

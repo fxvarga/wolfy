@@ -1,0 +1,51 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   NORDIC BLUE — Scandinavian Mountain Serenity
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Steel blue tones inspired by Nordic fjords and mountain ranges.
+   Professional and calm, perfect for focused work.
+
+   Palette: Nord-inspired steel blues
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Steel Blue) ─── */
+    surface-deep:           #2e3440;      /* Nord bg - polar night */
+    surface-elevated:       #3b4252;      /* Polar night 1 */
+    surface-subtle:         #434c5e;      /* Polar night 2 */
+
+    /* ─── Accent Colors (Frost) ─── */
+    accent-primary:         #88c0d0;      /* Frost - ice blue */
+    accent-secondary:       #81a1c1;      /* Frost - steel blue */
+    accent-tertiary:        #5e81ac;      /* Frost - deep blue */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #eceff4;      /* Snow storm white */
+    text-secondary:         #d8dee9;      /* Snow storm 1 */
+    text-muted:             #a0aab8;      /* Muted blue-gray */
+    text-disabled:          #6b7280;      /* Disabled gray */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #2e344020;    /* Ultra-subtle dark blue */
+    surface-panel:          #2e3440e8;    /* Panel - polar night */
+    taskpanel-bg:           #2e3440c0;    /* Task panel */
+    tailview-bg:            #2e3440f0;    /* Terminal background */
+
+    input-bg:               #eceff408;    /* White-tinted input */
+    hover-bg:               #88c0d018;    /* Hover - ice glow */
+    item-hover-bg:          #88c0d010;    /* List item hover */
+
+    accent-primary-alpha:   #88c0d040;    /* Ice with transparency */
+    text-muted-alpha:       #a0aab880;    /* Muted with transparency */
+
+    tree-line:              #6b728060;    /* Tree connector lines */
+    chevron:                #a0aab880;    /* Chevron color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #eceff4fa;    /* White clock */
+    clock-shadow:           #000000b3;    /* Dark shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #88c0d0;      /* Ice blue selection */
+    select-fg:              #2e3440;      /* Dark text */
+}

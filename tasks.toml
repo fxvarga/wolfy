@@ -20,7 +20,62 @@ script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\pfl\\backend\\core_automation_se
 # System utilities group
 [[groups]]
 name = "FCW"
+icon = "\uf013# Wolfy Task Panel Configuration
+# Quick-launch PowerShell scripts organized by groups
+# Icons use Nerd Font glyphs (Unicode escapes like \uf121)
+
+[settings]
+position = "left"
+
+# Development tools group
+[[groups]]
+name = "PF"
+icon = "\uf121"
+expanded = true
+
+
+[[groups.tasks]]
+name = "Run Backend"
+icon = "\uf233"
+script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\pfl\\backend\\core_automation_services\\local-runner\\Start-Backend.ps1' -Direct"
+
+[[groups.tasks]]
+name = "Run Frontend"
+icon = "\uf233"
+script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\pfl\\backend\\core_automation_services\\local-runner\\Start-Frontend.ps1' -Direct"
+
+# System utilities group
+[[groups]]
+name = "FCW"
 icon = "\uf013"
+expanded = false
+
+[[groups.tasks]]
+name = "Disk Usage"
+icon = "\uf1c0"
+script = "Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free -AutoSize"
+
+[[groups.tasks]]
+name = "Running Processes"
+icon = "\uf0ae"
+script = "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU, WorkingSet"
+
+# Network tools group
+[[groups]]
+name = "Agents"
+icon = "\uf0ac"
+expanded = false
+
+[[groups.tasks]]
+name = "DNS Lookup"
+icon = "\uf0ac"
+script = "Resolve-DnsName google.com"
+
+[[groups.tasks]]
+name = "Ping Test"
+icon = "\uf0e8"
+script = "Test-Connection -ComputerName google.com -Count 4"
+"
 expanded = false
 
 [[groups.tasks]]

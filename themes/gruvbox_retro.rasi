@@ -1,0 +1,52 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   GRUVBOX RETRO — Warm Vintage Comfort
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Classic Gruvbox palette with warm, earthy tones.
+   Inspired by vintage photography and autumn forests.
+   Easy on the eyes, nostalgic warmth.
+
+   Palette: Gruvbox Dark Hard
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Warm Earth) ─── */
+    surface-deep:           #1d2021;      /* Dark background */
+    surface-elevated:       #282828;      /* Gruvbox bg0 */
+    surface-subtle:         #3c3836;      /* bg1 - subtle */
+
+    /* ─── Accent Colors (Autumn Palette) ─── */
+    accent-primary:         #b8bb26;      /* Bright green - selection */
+    accent-secondary:       #fe8019;      /* Orange - secondary */
+    accent-tertiary:        #fabd2f;      /* Yellow - highlight */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #ebdbb2;      /* Warm cream text */
+    text-secondary:         #d5c4a1;      /* fg2 - secondary */
+    text-muted:             #a89984;      /* fg4 - muted */
+    text-disabled:          #665c54;      /* bg3 - disabled */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #28282820;    /* Ultra-subtle warm */
+    surface-panel:          #1d2021e8;    /* Panel - dark */
+    taskpanel-bg:           #1d2021c0;    /* Task panel */
+    tailview-bg:            #1d2021f0;    /* Terminal background */
+
+    input-bg:               #ebdbb208;    /* Cream-tinted input */
+    hover-bg:               #b8bb2618;    /* Hover - green glow */
+    item-hover-bg:          #b8bb2610;    /* List item hover */
+
+    accent-primary-alpha:   #b8bb2640;    /* Green with transparency */
+    text-muted-alpha:       #a8998480;    /* Muted with transparency */
+
+    tree-line:              #665c5460;    /* Tree connector lines */
+    chevron:                #a8998480;    /* Chevron color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #ebdbb2fa;    /* Warm cream clock */
+    clock-shadow:           #000000b3;    /* Dark shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #475437;      /* Muted green */
+    select-fg:              #b5cc97;      /* Bright green text */
+}

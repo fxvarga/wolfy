@@ -1,5 +1,7 @@
 //! AST types for the theme parser
 
+use std::collections::HashMap;
+
 use crate::theme::types::{
     Color, Distance, DistanceUnit, ImageScale, ImageSource, Orientation, Padding,
 };
@@ -82,6 +84,23 @@ impl Value {
         match self {
             Value::Color(c) => Some(*c),
             Value::Ident(name) => named_color(name),
+            _ => None,
+        }
+    }
+
+    /// Try to convert to Color, resolving identifiers against globals
+    /// This allows theme tokens like `accent-primary` to be used in place of colors
+    pub fn as_color_resolved(&self, globals: &HashMap<String, Value>) -> Option<Color> {
+        match self {
+            Value::Color(c) => Some(*c),
+            Value::Ident(name) => {
+                // First check named CSS colors
+                if let Some(c) = named_color(name) {
+                    return Some(c);
+                }
+                // Then check global theme tokens
+                globals.get(name).and_then(|v| v.as_color())
+            }
             _ => None,
         }
     }

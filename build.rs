@@ -20,6 +20,7 @@ fn main() {
         // List of theme files to copy
         let theme_files = [
             "default.rasi",          // Legacy/fallback
+            "core.rasi",             // New core styles (structure/layout)
             "launcher.rasi",         // Launcher window theme
             "theme_picker.rasi",     // Theme picker window theme
             "wallpaper_picker.rasi", // Wallpaper picker window theme
@@ -35,6 +36,32 @@ fn main() {
                     println!("cargo:warning=Failed to copy {}: {}", file, e);
                 } else {
                     println!("cargo:warning=Copied {} to {:?}", file, dst);
+                }
+            }
+        }
+
+        // Copy themes directory
+        let themes_src = Path::new("themes");
+        let themes_dst = profile_dir.join("themes");
+        if themes_src.exists() {
+            if let Err(e) = fs::create_dir_all(&themes_dst) {
+                println!("cargo:warning=Failed to create themes dir: {}", e);
+            } else {
+                // Copy all .rasi files from themes/
+                if let Ok(entries) = fs::read_dir(themes_src) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map(|e| e == "rasi").unwrap_or(false) {
+                            let filename = path.file_name().unwrap();
+                            let dst = themes_dst.join(filename);
+                            println!("cargo:rerun-if-changed={}", path.display());
+                            if let Err(e) = fs::copy(&path, &dst) {
+                                println!("cargo:warning=Failed to copy {:?}: {}", filename, e);
+                            } else {
+                                println!("cargo:warning=Copied {:?} to {:?}", filename, dst);
+                            }
+                        }
+                    }
                 }
             }
         }

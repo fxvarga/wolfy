@@ -191,6 +191,7 @@ impl ThemeTree {
     }
 
     /// Get a color property with default
+    /// Resolves color tokens (like `accent-primary`) against globals
     pub fn get_color(
         &self,
         widget: &str,
@@ -199,11 +200,12 @@ impl ThemeTree {
         default: Color,
     ) -> Color {
         self.get_value(widget, state, property)
-            .and_then(|v| v.as_color())
+            .and_then(|v| v.as_color_resolved(&self.globals))
             .unwrap_or(default)
     }
 
     /// Get an optional color property (returns None if not set)
+    /// Resolves color tokens (like `accent-primary`) against globals
     pub fn get_color_opt(
         &self,
         widget: &str,
@@ -211,7 +213,7 @@ impl ThemeTree {
         property: &str,
     ) -> Option<Color> {
         self.get_value(widget, state, property)
-            .and_then(|v| v.as_color())
+            .and_then(|v| v.as_color_resolved(&self.globals))
     }
 
     /// Get a distance property with default
@@ -323,6 +325,60 @@ impl ThemeTree {
     pub fn get_hotkey_string(&self, default: &str) -> String {
         self.get_string("window", None, "hotkey", default)
     }
+
+    /// Merge another theme into this one (other takes precedence)
+    /// This allows layering: load core.rasi first, then overlay theme colors
+    pub fn merge(&mut self, other: ThemeTree) {
+        // Merge globals (other overwrites)
+        for (key, value) in other.globals {
+            self.globals.insert(key, value);
+        }
+
+        // Merge widgets
+        for (name, other_node) in other.widgets {
+            if let Some(node) = self.widgets.get_mut(&name) {
+                // Merge base properties
+                for (prop, val) in other_node.properties {
+                    node.properties.insert(prop, val);
+                }
+                // Merge states
+                for (state, props) in other_node.states {
+                    let state_map = node.states.entry(state).or_default();
+                    for (prop, val) in props {
+                        state_map.insert(prop, val);
+                    }
+                }
+            } else {
+                // New widget, just insert it
+                self.widgets.insert(name, other_node);
+            }
+        }
+    }
+
+    /// Load multiple theme files and merge them in order
+    /// Later files take precedence over earlier ones
+    pub fn load_layered(paths: &[&Path]) -> Result<Self, ThemeError> {
+        let mut tree = Self::new();
+        for path in paths {
+            if path.exists() {
+                let layer = Self::load(path)?;
+                tree.merge(layer);
+            }
+        }
+        Ok(tree)
+    }
+
+    /// Convert a Hyde theme name to a theme file name
+    /// e.g., "Catppuccin Mocha" -> "catppuccin_mocha"
+    pub fn theme_name_to_filename(theme_name: &str) -> String {
+        theme_name
+            .to_lowercase()
+            .replace(' ', "_")
+            .replace('-', "_")
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_')
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -337,12 +393,12 @@ mod tests {
                 background-color: #1a1a2e;
                 text-color: white;
             }
-            
+
             textbox {
                 padding: 10px;
                 border-radius: 4px;
             }
-            
+
             textbox.focused {
                 border-color: #e94560;
             }
@@ -368,11 +424,11 @@ mod tests {
             * {
                 text-color: white;
             }
-            
+
             entry {
                 text-color: #ff0000;
             }
-            
+
             entry.focused {
                 text-color: #00ff00;
             }
@@ -489,7 +545,7 @@ textbox.focused {
                 orientation: horizontal;
                 children: [ "wallpaper-panel", "listbox" ];
             }
-            
+
             listbox {
                 orientation: vertical;
                 children: [ "inputbar", "listview" ];
@@ -520,7 +576,7 @@ textbox.focused {
             mainbox {
                 orientation: horizontal;
             }
-            
+
             listbox {
                 orientation: vertical;
             }
@@ -552,7 +608,7 @@ textbox.focused {
             wallpaper-panel {
                 background-image: url("auto", width);
             }
-            
+
             icon {
                 background-image: url("/path/to/image.png");
             }
@@ -598,7 +654,7 @@ textbox.focused {
                 expand: true;
                 spacing: 10px;
             }
-            
+
             fixed-widget {
                 expand: false;
                 spacing: 2em;
@@ -624,7 +680,7 @@ textbox.focused {
             panel {
                 background-color: rgba(30, 30, 30, 0.80);
             }
-            
+
             overlay {
                 background-color: rgba(255, 0, 128, 0.5);
             }
@@ -679,7 +735,7 @@ textbox.focused {
             window {
                 background-color: #262335cc;
             }
-            
+
             panel {
                 background-color: #ff000080;
             }

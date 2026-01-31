@@ -186,6 +186,9 @@ pub struct AppState {
 
     /// Whether themes have been scanned yet
     pub themes_loaded: bool,
+
+    /// Flag indicating the main app should reload its theme styling
+    pub theme_needs_reload: bool,
 }
 
 impl AppState {
@@ -197,6 +200,7 @@ impl AppState {
             all_apps: Vec::new(),
             hyde_themes: Vec::new(),
             themes_loaded: false,
+            theme_needs_reload: false,
         }
     }
 
@@ -212,6 +216,7 @@ impl AppState {
     pub fn set_current_theme(&mut self, theme_name: Option<String>) {
         log!("AppState: setting current theme to {:?}", theme_name);
         self.current_theme = theme_name;
+        self.theme_needs_reload = true;
     }
 
     /// Get wallpapers for the currently selected theme

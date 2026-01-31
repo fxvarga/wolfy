@@ -1,0 +1,52 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   GRAPHITE MONO — Editorial Minimalism
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Pure grayscale palette for distraction-free focus.
+   Typography-first design inspired by print editorial layouts.
+   Timeless, elegant, professional.
+
+   Palette: Pure grayscale with subtle depth
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Monochrome) ─── */
+    surface-deep:           #1a1a1a;      /* Near black */
+    surface-elevated:       #262626;      /* Charcoal */
+    surface-subtle:         #333333;      /* Dark gray */
+
+    /* ─── Accent Colors (All Grays) ─── */
+    accent-primary:         #a6a6a6;      /* Light gray - selection */
+    accent-secondary:       #808080;      /* Mid gray - secondary */
+    accent-tertiary:        #595959;      /* Dark gray - tertiary */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #d9d9d9;      /* Light gray text */
+    text-secondary:         #bfbfbf;      /* Secondary text */
+    text-muted:             #808080;      /* Muted gray */
+    text-disabled:          #4d4d4d;      /* Disabled dark gray */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #1a1a1a20;    /* Ultra-subtle dark */
+    surface-panel:          #262626e8;    /* Panel - charcoal */
+    taskpanel-bg:           #1a1a1ac0;    /* Task panel */
+    tailview-bg:            #1a1a1af0;    /* Terminal background */
+
+    input-bg:               #ffffff08;    /* Subtle white input */
+    hover-bg:               #ffffff12;    /* Hover state */
+    item-hover-bg:          #ffffff10;    /* List item hover */
+
+    accent-primary-alpha:   #a6a6a640;    /* Gray with transparency */
+    text-muted-alpha:       #80808080;    /* Muted with transparency */
+
+    tree-line:              #4d4d4d60;    /* Tree connector lines */
+    chevron:                #80808080;    /* Chevron color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #d9d9d9fa;    /* Light gray clock */
+    clock-shadow:           #000000b3;    /* Dark shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #a6a6a6;      /* Light gray selection */
+    select-fg:              #262626;      /* Dark text */
+}

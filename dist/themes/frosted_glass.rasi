@@ -1,0 +1,51 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   FROSTED GLASS — Arctic Crystal Clarity
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Light, airy theme inspired by frozen lakes and mountain air.
+   Icy blue accents on frosted white create a clean, professional feel.
+
+   Palette: Frosted Glass + Nordic minimalism
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Frosted Light) ─── */
+    surface-deep:           #f5f8fa;      /* Ice white */
+    surface-elevated:       #e8eef2;      /* Frosted surface */
+    surface-subtle:         #dce4e9;      /* Subtle frost */
+
+    /* ─── Accent Colors ─── */
+    accent-primary:         #7ed6ff;      /* Sky blue - ice accent */
+    accent-secondary:       #a44185;      /* Magenta - contrast pop */
+    accent-tertiary:        #ea9d34;      /* Warm orange - highlight */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #1e4c84;      /* Deep blue text */
+    text-secondary:         #3a6298;      /* Secondary blue */
+    text-muted:             #6b8baa;      /* Muted blue-gray */
+    text-disabled:          #a0b4c8;      /* Disabled light blue */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #e6f1f420;    /* Frosted window tint */
+    surface-panel:          #e6f1f4e8;    /* Panel - frosted */
+    taskpanel-bg:           #e8eef2c0;    /* Task panel */
+    tailview-bg:            #e6f1f4f0;    /* Terminal background */
+
+    input-bg:               #1e4c8410;    /* Blue-tinted input */
+    hover-bg:               #7ed6ff20;    /* Hover - ice blue */
+    item-hover-bg:          #7ed6ff15;    /* List item hover */
+
+    accent-primary-alpha:   #7ed6ff40;    /* Ice blue transparency */
+    text-muted-alpha:       #6b8baa80;    /* Muted with transparency */
+
+    tree-line:              #a0b4c860;    /* Tree connector lines */
+    chevron:                #6b8baa80;    /* Chevron color */
+
+    /* ─── Clock Colors (Light mode) ─── */
+    clock-text:             #1e4c84fa;    /* Dark blue clock */
+    clock-shadow:           #ffffff80;    /* Light shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #7ed6ff;      /* Ice blue selection */
+    select-fg:              #1e4c84;      /* Dark blue text */
+}

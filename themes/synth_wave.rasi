@@ -1,0 +1,52 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SYNTH WAVE — Retro 80s Neon Dreams
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Vibrant synthwave aesthetic with electric neon on deep purple.
+   Inspired by outrun, retrowave, and 80s arcade aesthetics.
+   Maximum visual impact with premium feel.
+
+   Palette: Synthwave + Outrun vibes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Deep Purple) ─── */
+    surface-deep:           #1a1625;      /* Deepest purple-black */
+    surface-elevated:       #262335;      /* Elevated purple */
+    surface-subtle:         #352f44;      /* Subtle purple */
+
+    /* ─── Accent Colors (Neon Trio) ─── */
+    accent-primary:         #03edf9;      /* Electric cyan - primary */
+    accent-secondary:       #f97e72;      /* Coral/salmon - secondary */
+    accent-tertiary:        #72f1b8;      /* Mint green - tertiary */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #ffffff;      /* Pure white */
+    text-secondary:         #e8e0f0;      /* Soft lavender white */
+    text-muted:             #a89bc0;      /* Muted purple */
+    text-disabled:          #6b5f80;      /* Disabled purple */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #1a162520;    /* Ultra-subtle purple */
+    surface-panel:          #1a1625e8;    /* Panel - deep purple */
+    taskpanel-bg:           #1a1625c0;    /* Task panel */
+    tailview-bg:            #1a1625f0;    /* Terminal background */
+
+    input-bg:               #ffffff08;    /* Subtle white input */
+    hover-bg:               #ffffff12;    /* Hover state */
+    item-hover-bg:          #ffffff10;    /* List item hover */
+
+    accent-primary-alpha:   #03edf940;    /* Cyan with transparency */
+    text-muted-alpha:       #a89bc080;    /* Muted with transparency */
+
+    tree-line:              #a89bc060;    /* Tree connector lines */
+    chevron:                #a89bc080;    /* Chevron color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #fffffffa;    /* White clock */
+    clock-shadow:           #000000b3;    /* Dark shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #03edf9;      /* Electric cyan */
+    select-fg:              #1a1625;      /* Deep purple text */
+}

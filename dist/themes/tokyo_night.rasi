@@ -1,0 +1,51 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOKYO NIGHT — Japanese Metropolis After Dark
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Cool blue-purple palette inspired by Tokyo's neon-lit streets.
+   Calm yet vibrant, perfect for late-night coding sessions.
+
+   Palette: Tokyo Night Storm variant
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Night Blue) ─── */
+    surface-deep:           #1a1b26;      /* Storm background */
+    surface-elevated:       #24283b;      /* Terminal background */
+    surface-subtle:         #414868;      /* Visual selection */
+
+    /* ─── Accent Colors (City Lights) ─── */
+    accent-primary:         #7aa2f7;      /* Blue - primary accent */
+    accent-secondary:       #bb9af7;      /* Purple - secondary */
+    accent-tertiary:        #7dcfff;      /* Cyan - tertiary */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #c0caf5;      /* Foreground - soft blue */
+    text-secondary:         #a9b1d6;      /* Text - secondary */
+    text-muted:             #565f89;      /* Comment - muted */
+    text-disabled:          #414868;      /* Disabled */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #1a1b2620;    /* Ultra-subtle dark blue */
+    surface-panel:          #1a1b26e8;    /* Panel - night */
+    taskpanel-bg:           #1a1b26c0;    /* Task panel */
+    tailview-bg:            #1a1b26f0;    /* Terminal background */
+
+    input-bg:               #7aa2f708;    /* Blue-tinted input */
+    hover-bg:               #7aa2f715;    /* Hover - blue glow */
+    item-hover-bg:          #7aa2f710;    /* List item hover */
+
+    accent-primary-alpha:   #7aa2f740;    /* Blue with transparency */
+    text-muted-alpha:       #565f8980;    /* Muted with transparency */
+
+    tree-line:              #41486860;    /* Tree connector lines */
+    chevron:                #565f8980;    /* Chevron color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #c0caf5fa;    /* Blue-white clock */
+    clock-shadow:           #000000b3;    /* Dark shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #7aa2f7;      /* Blue selection */
+    select-fg:              #24283b;      /* Dark text */
+}

@@ -17,6 +17,11 @@ name = "Run Backend"
 icon = "\uf233"
 script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\pfl\\backend\\core_automation_services\\local-runner\\Start-Backend.ps1' -Direct"
 
+[[groups.tasks]]
+name = "Run Frontend"
+icon = "\uf233"
+script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\pfl\\backend\\core_automation_services\\local-runner\\Start-Frontend.ps1' -Direct"
+
 # System utilities group
 [[groups]]
 name = "FCW"

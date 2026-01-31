@@ -1,0 +1,251 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   WOLFY CORE STYLES — Structure, Dimensions, Layout
+   ═══════════════════════════════════════════════════════════════════════════
+
+   This file contains all structural properties (sizes, spacing, layout).
+   Color values reference tokens defined in theme files (themes/*.rasi).
+
+   Usage: Load this file first, then overlay a theme color file.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GRID VIEW (for wallpaper/theme picker modes)
+   ───────────────────────────────────────────────────────────────────────────── */
+gridview {
+    spacing: 20;
+    padding: 20;
+    padding-left: 28;
+    padding-right: 28;
+    thumb-size: 240;
+    thumb-radius: 16;
+    label-height: 32;
+    label-color: text-secondary;
+    max-columns: 5;
+    font-family: "Segoe UI Variable Display";
+    font-size: 13;
+}
+
+gridview:selected {
+    border-color: accent-primary;
+    border-width: 3;
+    label-color: text-primary;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   WINDOW — The stage for everything
+   ───────────────────────────────────────────────────────────────────────────── */
+window {
+    width: 1200;
+    height: 550;
+    background-color: window-bg;
+    border-radius: 24;
+    border-color: transparent;
+    hotkey: "ctrl+0";
+    animation-duration: 280;
+    animation-easing: ease-out-expo;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MAIN LAYOUT CONTAINER
+   ───────────────────────────────────────────────────────────────────────────── */
+mainbox {
+    orientation: horizontal;
+    children: [ "wallpaper-panel", "listbox" ];
+    spacing: 0;
+    padding: 0;
+    background-color: transparent;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   WALLPAPER PANEL — The hero moment
+   ───────────────────────────────────────────────────────────────────────────── */
+wallpaper-panel {
+    background-image: url("auto", width);
+    background-color: transparent;
+    expand: false;
+    width: 620;
+    border-radius: 24;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    diagonal-edge: 80;
+    fade-width: 100;
+
+    /* Clock settings */
+    clock-enabled: true;
+    clock-position: middle-center;
+    clock-format: "%H:%M";
+    clock-date-format: "%A, %B %d";
+    clock-font-family: "Segoe UI Variable Display";
+    clock-font-size: 88;
+    clock-date-font-size: 24;
+    clock-text-color: clock-text;
+    clock-shadow-color: clock-shadow;
+    clock-shadow-offset-x: 0;
+    clock-shadow-offset-y: 3;
+    clock-padding: 30;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   LIST BOX — Frosted glass sidebar
+   ───────────────────────────────────────────────────────────────────────────── */
+listbox {
+    orientation: vertical;
+    children: [ "dummy", "listview", "dummy" ];
+    spacing: 0;
+    expand: false;
+    background-color: surface-panel;
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+    border-radius: 24;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   INPUT BAR
+   ───────────────────────────────────────────────────────────────────────────── */
+inputbar {
+    orientation: horizontal;
+    children: [ "textbox" ];
+    spacing: 0;
+    background-color: transparent;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TEXTBOX — Search input
+   ───────────────────────────────────────────────────────────────────────────── */
+textbox {
+    background-color: input-bg;
+    text-color: text-primary;
+    border-width: 0;
+    border-color: transparent;
+    border-radius: 16;
+    padding-top: 18;
+    padding-right: 20;
+    padding-bottom: 18;
+    padding-left: 20;
+    font-size: 15;
+    font-family: "Segoe UI Variable Text";
+    placeholder-color: text-muted-alpha;
+    cursor-color: accent-primary;
+    selection-color: accent-primary-alpha;
+}
+
+textbox.focused {
+    border-color: accent-primary;
+    border-width: 2;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   LIST VIEW — Netflix-style clean list
+   ───────────────────────────────────────────────────────────────────────────── */
+listview {
+    background-color: transparent;
+    text-color: text-primary;
+    border-width: 0;
+    border-radius: 0;
+    padding-top: 16;
+    padding-right: 16;
+    padding-bottom: 24;
+    padding-left: 16;
+    spacing: 4;
+    lines: 9;
+    scrollbar-width: 0;
+    scrollbar-color: accent-primary-alpha;
+    scrollbar-track-color: transparent;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ELEMENT — Individual list items
+   ───────────────────────────────────────────────────────────────────────────── */
+element {
+    background-color: transparent;
+    text-color: text-secondary;
+    subtext-color: text-muted;
+    font-size: 18;
+    font-family: "Segoe UI Variable Text";
+    subtext-font-size: 10;
+    padding-horizontal: 14;
+    padding-vertical: 10;
+    icon-size: 22;
+    icon-spacing: 10;
+    height: 48;
+    border-radius: 10;
+}
+
+element:selected {
+    background-color: accent-primary;
+    text-color: select-fg;
+}
+
+element:hover {
+    background-color: hover-bg;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SPACER
+   ───────────────────────────────────────────────────────────────────────────── */
+dummy {
+    background-color: transparent;
+    expand: true;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TASK PANEL — Refined sidebar
+   ───────────────────────────────────────────────────────────────────────────── */
+task-panel {
+    enabled: true;
+    position: left;
+
+    /* Sizing */
+    compact-width: 56;
+    expanded-width: 280;
+
+    /* Colors */
+    background-color: taskpanel-bg;
+    item-background-color: item-hover-bg;
+    selected-background-color: accent-primary-alpha;
+    icon-color: text-secondary;
+    icon-color-hover: accent-primary;
+    group-icon-color: accent-secondary;
+    text-color: text-secondary;
+    text-color-hover: text-primary;
+    tree-line-color: tree-line;
+    chevron-color: chevron;
+
+    /* Typography */
+    icon-font-family: "JetBrainsMono Nerd Font";
+    text-font-family: "Segoe UI Variable Text";
+    icon-size: 22;
+    text-size: 18;
+
+    /* Layout */
+    item-height: 48;
+    item-corner-radius: 12;
+    padding: 12;
+    group-spacing: 16;
+    item-spacing: 4;
+    border-radius: 16;
+    sub-item-indent: 32;
+
+    /* Tree characters */
+    chevron-collapsed: "›";
+    chevron-expanded: "˅";
+    tree-branch: "│";
+    tree-corner: "└";
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TAIL VIEW — Terminal output viewer
+   ───────────────────────────────────────────────────────────────────────────── */
+tailview {
+    background-color: tailview-bg;
+    text-color: text-secondary;
+    font-family: "Cascadia Code";
+    font-size: 12;
+    padding: 16;
+    line-spacing: 4;
+    border-radius: 24;
+}

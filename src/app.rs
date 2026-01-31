@@ -930,18 +930,39 @@ impl App {
             parent_size: config.width as f32,
         };
 
-        // Load theme from user config dir or exe directory
-        let theme_path = find_config_file("default.rasi");
-        log!("  Loading theme from {:?}", theme_path);
-        let theme = match ThemeTree::load(&theme_path) {
-            Ok(t) => {
-                log!("  Theme loaded successfully");
-                Some(t)
-            }
-            Err(e) => {
-                log!("  Failed to load theme: {:?}, using defaults", e);
-                None
-            }
+        // Load theme: core.rasi + current theme colors
+        // Fall back to default.rasi for backwards compatibility
+        let core_path = find_config_file("core.rasi");
+        let (theme, theme_path) = if core_path.exists() {
+            // New layered theme system
+            let theme_colors_path = find_config_file("themes/catppuccin_mocha.rasi");
+            log!("  Loading layered theme: {:?} + {:?}", core_path, theme_colors_path);
+            let t = match ThemeTree::load_layered(&[&core_path, &theme_colors_path]) {
+                Ok(t) => {
+                    log!("  Layered theme loaded successfully");
+                    Some(t)
+                }
+                Err(e) => {
+                    log!("  Failed to load layered theme: {:?}, trying default.rasi", e);
+                    None
+                }
+            };
+            (t, core_path)
+        } else {
+            // Legacy: single default.rasi file
+            let legacy_path = find_config_file("default.rasi");
+            log!("  Loading legacy theme from {:?}", legacy_path);
+            let t = match ThemeTree::load(&legacy_path) {
+                Ok(t) => {
+                    log!("  Theme loaded successfully");
+                    Some(t)
+                }
+                Err(e) => {
+                    log!("  Failed to load theme: {:?}, using defaults", e);
+                    None
+                }
+            };
+            (t, legacy_path)
         };
 
         // Create textbox with theme style
@@ -1448,6 +1469,10 @@ impl App {
                                         // Set current theme and switch to WallpaperPicker
                                         self.current_theme = Some(item.user_data.clone());
                                         log!("Selected theme: {}", item.user_data);
+
+                                        // Reload the theme styling with new colors
+                                        self.reload_theme();
+
                                         self.current_mode = Mode::WallpaperPicker;
                                         self.on_mode_changed();
                                         // Force repaint
@@ -2466,25 +2491,54 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         }
     }
 
+    /// Set the current theme name (used when syncing with AppState)
+    pub fn set_current_theme(&mut self, theme_name: Option<String>) {
+        log!("App::set_current_theme({:?})", theme_name);
+        self.current_theme = theme_name;
+    }
+
     /// Reload theme from disk and apply all changes
     pub fn reload_theme(&mut self) {
-        let theme_path = find_config_file("default.rasi");
-        log!("reload_theme() - theme_path={:?}", theme_path);
-        log!("reload_theme() - file exists={}", theme_path.exists());
+        log!("reload_theme() - reloading theme");
 
-        if !theme_path.exists() {
-            log!("  Theme file does not exist, skipping reload");
-            return;
-        }
+        // Try layered theme system first, fall back to legacy
+        let core_path = find_config_file("core.rasi");
+        let theme = if core_path.exists() {
+            // Use current theme, or default to catppuccin_mocha
+            let theme_filename = self.current_theme
+                .as_ref()
+                .map(|name| ThemeTree::theme_name_to_filename(name))
+                .unwrap_or_else(|| "catppuccin_mocha".to_string());
+            let theme_colors_path = find_config_file(&format!("themes/{}.rasi", theme_filename));
 
-        let theme = match ThemeTree::load(&theme_path) {
-            Ok(t) => {
-                log!("  Theme reloaded successfully");
-                t
+            log!("  Loading layered theme: {:?} + {:?}", core_path, theme_colors_path);
+            match ThemeTree::load_layered(&[&core_path, &theme_colors_path]) {
+                Ok(t) => {
+                    log!("  Layered theme reloaded successfully");
+                    t
+                }
+                Err(e) => {
+                    log!("  Failed to reload layered theme: {:?}", e);
+                    return;
+                }
             }
-            Err(e) => {
-                log!("  Failed to reload theme: {:?}", e);
+        } else {
+            // Legacy: single default.rasi file
+            let theme_path = find_config_file("default.rasi");
+            log!("  Loading legacy theme from {:?}", theme_path);
+            if !theme_path.exists() {
+                log!("  Theme file does not exist, skipping reload");
                 return;
+            }
+            match ThemeTree::load(&theme_path) {
+                Ok(t) => {
+                    log!("  Theme reloaded successfully");
+                    t
+                }
+                Err(e) => {
+                    log!("  Failed to reload theme: {:?}", e);
+                    return;
+                }
             }
         };
 

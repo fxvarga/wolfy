@@ -1,0 +1,52 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   EDGE RUNNER — Cyberpunk Neon Overdrive
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Pure black background with explosive neon accents.
+   Inspired by Night City, Lucy, and David's rebellion.
+   High contrast, maximum impact.
+
+   Palette: Edge Runners anime + Cyberpunk 2077
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Pure Black) ─── */
+    surface-deep:           #000000;      /* Absolute black */
+    surface-elevated:       #0a0a0a;      /* Nearly black */
+    surface-subtle:         #141414;      /* Subtle dark */
+
+    /* ─── Accent Colors (Neon Explosion) ─── */
+    accent-primary:         #fada16;      /* Neon yellow - electric */
+    accent-secondary:       #ffa6c2;      /* Hot pink - Lucy's hair */
+    accent-tertiary:        #00ffff;      /* Cyan - tech glow */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #ffffff;      /* Pure white */
+    text-secondary:         #e0e0e0;      /* Soft white */
+    text-muted:             #808080;      /* Gray */
+    text-disabled:          #404040;      /* Dark gray */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #00000020;    /* Ultra-subtle black */
+    surface-panel:          #000000e8;    /* Black panel */
+    taskpanel-bg:           #000000c0;    /* Task panel */
+    tailview-bg:            #000000f0;    /* Terminal - pure black */
+
+    input-bg:               #fada1608;    /* Yellow-tinted input */
+    hover-bg:               #fada1618;    /* Hover - yellow glow */
+    item-hover-bg:          #fada1610;    /* List item hover */
+
+    accent-primary-alpha:   #fada1640;    /* Yellow with transparency */
+    text-muted-alpha:       #80808080;    /* Gray with transparency */
+
+    tree-line:              #40404060;    /* Tree connector lines */
+    chevron:                #80808080;    /* Chevron color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #fada16fa;    /* Neon yellow clock */
+    clock-shadow:           #000000b3;    /* Dark shadow */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #fada16;      /* Electric yellow */
+    select-fg:              #000000;      /* Black text */
+}

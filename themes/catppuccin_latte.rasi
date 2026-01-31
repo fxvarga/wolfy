@@ -1,0 +1,51 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   CATPPUCCIN LATTE — Creamy Light Elegance
+   ═══════════════════════════════════════════════════════════════════════════
+
+   A warm, inviting light theme with soft cream tones and rose accents.
+   Perfect for daytime productivity and gentle on the eyes.
+
+   Palette: Catppuccin Latte official colors
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Surface Colors (Light Mode) ─── */
+    surface-deep:           #eff1f5;      /* Base - creamy white */
+    surface-elevated:       #e6e9ef;      /* Surface0 */
+    surface-subtle:         #dce0e8;      /* Mantle */
+
+    /* ─── Accent Colors ─── */
+    accent-primary:         #dd7878;      /* Red/Maroon - warm selection */
+    accent-secondary:       #8839ef;      /* Mauve - purple accent */
+    accent-tertiary:        #40a02b;      /* Green - success states */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #4c4f69;      /* Text - dark blue-gray */
+    text-secondary:         #5c5f77;      /* Subtext1 */
+    text-muted:             #6c6f85;      /* Subtext0 */
+    text-disabled:          #9ca0b0;      /* Overlay0 */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #eff1f520;    /* Ultra-subtle base tint */
+    surface-panel:          #dce0e8e8;    /* Panel background */
+    taskpanel-bg:           #e6e9efc0;    /* Task panel */
+    tailview-bg:            #dce0e8f0;    /* Terminal background */
+
+    input-bg:               #4c4f6910;    /* Input field background */
+    hover-bg:               #4c4f6915;    /* Hover state background */
+    item-hover-bg:          #4c4f6912;    /* List item hover */
+
+    accent-primary-alpha:   #dd787840;    /* Accent with transparency */
+    text-muted-alpha:       #6c6f8580;    /* Muted text with transparency */
+
+    tree-line:              #9ca0b060;    /* Tree connector lines */
+    chevron:                #9ca0b080;    /* Chevron/arrow color */
+
+    /* ─── Clock Colors (Light mode needs dark text) ─── */
+    clock-text:             #4c4f69fa;    /* Dark text for readability */
+    clock-shadow:           #ffffff80;    /* Light shadow for depth */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #dd7878;      /* Warm rose selection */
+    select-fg:              #eff1f5;      /* Light text on selection */
+}
