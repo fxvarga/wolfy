@@ -402,12 +402,21 @@ impl GridWindow {
         if let Some(item) = self.gridview.selected_item() {
             match self.mode {
                 Mode::ThemePicker => {
-                    // Set current theme and hide
+                    // Set current theme and set the first wallpaper from that theme
                     let theme_name = item.title.clone();
                     log!("Theme selected: {}", theme_name);
                     self.app_state
                         .borrow_mut()
-                        .set_current_theme(Some(theme_name));
+                        .set_current_theme(Some(theme_name.clone()));
+
+                    // Set the first wallpaper from this theme
+                    let wallpapers = scan_theme_wallpapers(&theme_name);
+                    if let Some(first_wallpaper) = wallpapers.first() {
+                        let wallpaper_path = first_wallpaper.to_string_lossy().to_string();
+                        log!("Setting first wallpaper from theme: {}", wallpaper_path);
+                        crate::platform::win32::set_wallpaper(&wallpaper_path);
+                    }
+
                     self.hide();
                 }
                 Mode::WallpaperPicker => {

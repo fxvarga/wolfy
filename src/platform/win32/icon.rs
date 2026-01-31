@@ -16,12 +16,14 @@ use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject, BITMAPINFO,
     BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC,
 };
-use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+use windows::Win32::UI::Controls::IImageList;
+use windows::Win32::UI::Shell::{
+    SHGetFileInfoW, SHGetImageList, SHFILEINFOW, SHGFI_SYSICONINDEX, SHIL_JUMBO,
+};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 
-/// Size of icons to extract (large = 32x32, we'll request this for quality)
-#[allow(dead_code)]
-const ICON_SIZE: u32 = 32;
+/// Size of jumbo icons (256x256)
+const ICON_SIZE: u32 = 256;
 
 /// Icon cache entry
 pub struct CachedIcon {
@@ -91,14 +93,14 @@ impl IconLoader {
         let path_wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
 
         unsafe {
-            // Use SHGetFileInfo to get the icon
+            // First, get the icon index using SHGetFileInfo
             let mut file_info = SHFILEINFOW::default();
             let result = SHGetFileInfoW(
                 windows::core::PCWSTR(path_wide.as_ptr()),
                 windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL,
                 Some(&mut file_info),
                 std::mem::size_of::<SHFILEINFOW>() as u32,
-                SHGFI_ICON | SHGFI_LARGEICON,
+                SHGFI_SYSICONINDEX,
             );
 
             if result == 0 {
@@ -106,9 +108,17 @@ impl IconLoader {
                 return Err(Error::from_win32());
             }
 
-            let hicon = file_info.hIcon;
+            let icon_index = file_info.iIcon as i32;
+            log!("  Icon index: {}", icon_index);
+
+            // Get the jumbo (256x256) image list
+            let image_list: IImageList = SHGetImageList(SHIL_JUMBO as i32)?;
+            log!("  Got jumbo image list");
+
+            // Get the icon from the image list
+            let hicon = image_list.GetIcon(icon_index, 0)?;
             if hicon.is_invalid() {
-                log!("  Got invalid HICON");
+                log!("  Got invalid HICON from image list");
                 return Err(Error::from_win32());
             }
 
@@ -239,8 +249,8 @@ impl IconLoader {
 
             log!("  Got {} scanlines of pixel data", lines);
 
-            // Convert BGRA to premultiplied alpha (D2D expects premultiplied)
-            // Windows icons are already BGRA, but we need to ensure alpha is correct
+            // Windows 32-bit icons with alpha are ALREADY premultiplied
+            // We only need to handle icons without alpha (using the mask)
             // Some icons have all-zero alpha, in which case we should use the mask
             let has_alpha = pixels.iter().skip(3).step_by(4).any(|&a| a > 0);
 
@@ -276,15 +286,17 @@ impl IconLoader {
                         pixels[i + 3] = 255;
                     }
                 }
-            }
 
-            // Premultiply alpha for D2D
-            for i in (0..pixels.len()).step_by(4) {
-                let a = pixels[i + 3] as f32 / 255.0;
-                pixels[i] = (pixels[i] as f32 * a) as u8; // B
-                pixels[i + 1] = (pixels[i + 1] as f32 * a) as u8; // G
-                pixels[i + 2] = (pixels[i + 2] as f32 * a) as u8; // R
+                // Only premultiply for mask-based icons (non-alpha icons)
+                // since we just set the alpha channel ourselves
+                for i in (0..pixels.len()).step_by(4) {
+                    let a = pixels[i + 3] as f32 / 255.0;
+                    pixels[i] = (pixels[i] as f32 * a) as u8; // B
+                    pixels[i + 1] = (pixels[i + 1] as f32 * a) as u8; // G
+                    pixels[i + 2] = (pixels[i + 2] as f32 * a) as u8; // R
+                }
             }
+            // Icons with alpha channel are already premultiplied by Windows
 
             // Clean up GDI objects
             DeleteDC(hdc);
