@@ -128,6 +128,13 @@ impl WindowManager {
                 self.theme_picker.borrow_mut().hide();
                 self.wallpaper_picker.borrow_mut().show();
             }
+            Mode::TailView => {
+                // TailView is a mode within the launcher, not a separate window
+                // Just show the launcher (it will be in TailView mode)
+                self.theme_picker.borrow_mut().hide();
+                self.wallpaper_picker.borrow_mut().hide();
+                self.launcher.borrow_mut().show();
+            }
         }
     }
 }

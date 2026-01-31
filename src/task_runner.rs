@@ -250,6 +250,21 @@ impl TaskRunner {
         }
     }
 
+    /// Kill a specific running task
+    pub fn kill_task(&mut self, group: &str, name: &str) -> bool {
+        let key = Self::task_key(group, name);
+        if let Some(task) = self.tasks.get_mut(&key) {
+            if let Some(ref mut child) = task.child {
+                log!("Killing task: {}", key);
+                let _ = child.kill();
+                task.status = TaskStatus::Failed;
+                task.child = None;
+                return true;
+            }
+        }
+        false
+    }
+
     /// Get all tasks with their current status (for UI)
     pub fn get_all_statuses(&self) -> HashMap<String, TaskStatus> {
         self.tasks

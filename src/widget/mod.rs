@@ -15,6 +15,7 @@ pub mod factory;
 pub mod gridview;
 pub mod listview;
 pub mod panel;
+pub mod tailview;
 pub mod taskpanel;
 pub mod textbox;
 
@@ -31,6 +32,7 @@ pub use factory::{UITree, WidgetFactory, WidgetNode, WidgetType};
 pub use gridview::{GridItem, GridLayout, GridView, GridViewStyle, SelectionStyle};
 pub use listview::{ListView, ListViewStyle};
 pub use panel::{Panel, PanelStyle};
+pub use tailview::{TailView, TailViewHit, TailViewStyle};
 pub use taskpanel::{TaskPanelState, TaskPanelStyle};
 pub use textbox::Textbox;
 

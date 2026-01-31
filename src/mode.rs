@@ -17,15 +17,19 @@ pub enum Mode {
     ThemePicker,
     /// Grid view of wallpapers for selection
     WallpaperPicker,
+    /// Tail view showing task output
+    TailView,
 }
 
 impl Mode {
     /// Get the hotkey ID associated with this mode
+    /// TailView doesn't have a hotkey (it's entered via task panel click)
     pub fn hotkey_id(&self) -> i32 {
         match self {
             Mode::Launcher => HOTKEY_ID_LAUNCHER,
             Mode::ThemePicker => HOTKEY_ID_THEME,
             Mode::WallpaperPicker => HOTKEY_ID_WALLPAPER,
+            Mode::TailView => HOTKEY_ID_LAUNCHER, // No dedicated hotkey, use Launcher's
         }
     }
 
@@ -49,6 +53,11 @@ impl Mode {
         matches!(self, Mode::ThemePicker | Mode::WallpaperPicker)
     }
 
+    /// Whether this mode uses tail view (task output)
+    pub fn uses_tail_view(&self) -> bool {
+        matches!(self, Mode::TailView)
+    }
+
     /// Whether this mode shows the wallpaper panel on the left
     pub fn has_wallpaper_panel(&self) -> bool {
         matches!(self, Mode::Launcher)
@@ -60,6 +69,7 @@ impl Mode {
             Mode::Launcher => "App Launcher",
             Mode::ThemePicker => "Theme Picker",
             Mode::WallpaperPicker => "Wallpaper Picker",
+            Mode::TailView => "Task Output",
         }
     }
 }

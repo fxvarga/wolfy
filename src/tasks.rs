@@ -36,6 +36,22 @@ impl Default for TasksConfig {
     }
 }
 
+impl TasksConfig {
+    /// Find a task by group name and task name
+    pub fn find_task(&self, group_name: &str, task_name: &str) -> Option<&Task> {
+        for group in &self.groups {
+            if group.name == group_name {
+                for task in &group.tasks {
+                    if task.name == task_name {
+                        return Some(task);
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
 /// Panel-level settings
 #[derive(Debug, Clone, Deserialize)]
 pub struct TaskPanelSettings {

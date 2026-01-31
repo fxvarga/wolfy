@@ -1195,6 +1195,52 @@ impl Renderer {
         }
     }
 
+    /// Create a text format with word wrapping enabled (for multi-line text)
+    pub fn create_text_format_wrap(
+        &self,
+        font_family: &str,
+        font_size: f32,
+        bold: bool,
+        italic: bool,
+    ) -> Result<IDWriteTextFormat, Error> {
+        let family: Vec<u16> = font_family
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+
+        let weight = if bold {
+            DWRITE_FONT_WEIGHT_BOLD
+        } else {
+            DWRITE_FONT_WEIGHT_REGULAR
+        };
+
+        let style = if italic {
+            DWRITE_FONT_STYLE_ITALIC
+        } else {
+            DWRITE_FONT_STYLE_NORMAL
+        };
+
+        unsafe {
+            let format = self.dwrite_factory.CreateTextFormat(
+                windows::core::PCWSTR(family.as_ptr()),
+                None,
+                weight,
+                style,
+                DWRITE_FONT_STRETCH_NORMAL,
+                font_size,
+                windows::core::w!("en-US"),
+            )?;
+
+            // Set text alignment
+            format.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING)?;
+            format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR)?;
+            // Enable word wrapping
+            format.SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP)?;
+
+            Ok(format)
+        }
+    }
+
     /// Draw text
     pub fn draw_text(
         &mut self,

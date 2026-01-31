@@ -121,7 +121,7 @@ impl GridWindow {
         let theme_filename = match mode {
             Mode::ThemePicker => "theme_picker.rasi",
             Mode::WallpaperPicker => "wallpaper_picker.rasi",
-            Mode::Launcher => "launcher.rasi", // Shouldn't happen, but handle it
+            Mode::Launcher | Mode::TailView => "launcher.rasi", // Shouldn't happen for grid, but handle it
         };
         let theme_path = find_config_file(theme_filename);
         log!("  Loading theme from {:?}", theme_path);
@@ -244,8 +244,8 @@ impl GridWindow {
             Mode::WallpaperPicker => {
                 self.load_wallpapers();
             }
-            Mode::Launcher => {
-                // Launcher doesn't use GridWindow
+            Mode::Launcher | Mode::TailView => {
+                // Launcher and TailView don't use GridWindow
             }
         }
     }
@@ -414,8 +414,8 @@ impl GridWindow {
                     crate::platform::win32::set_wallpaper(&wallpaper_path);
                     self.hide();
                 }
-                Mode::Launcher => {
-                    // Shouldn't happen
+                Mode::Launcher | Mode::TailView => {
+                    // Shouldn't happen - grid is not used in these modes
                 }
             }
         }

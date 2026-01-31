@@ -255,3 +255,16 @@ task-panel {
     tree-branch: "│";
     tree-corner: "└";
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TAIL VIEW — Embedded terminal output viewer
+   ───────────────────────────────────────────────────────────────────────────── */
+tailview {
+    background-color: #1a1625f0;          /* Solid dark background */
+    text-color: #e8e0f0;                  /* Soft terminal text */
+    font-family: "Cascadia Code";         /* Monospace for terminal feel */
+    font-size: 12;
+    padding: 16;
+    line-spacing: 4;
+    border-radius: 24;
+}

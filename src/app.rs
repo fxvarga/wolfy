@@ -23,8 +23,8 @@ use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageScale, LayoutContext, Rect};
 use crate::widget::{
     ClockConfig, ClockPosition, CornerRadii, ElementData, ElementStyle, EventResult, GridItem,
-    GridView, GridViewStyle, ListView, ListViewStyle, TaskPanelState, TaskPanelStyle, Textbox,
-    Widget, WidgetState, WidgetStyle,
+    GridView, GridViewStyle, ListView, ListViewStyle, TailView, TailViewHit, TailViewStyle,
+    TaskPanelState, TaskPanelStyle, Textbox, Widget, WidgetState, WidgetStyle,
 };
 
 /// Cursor blink timer ID
@@ -47,6 +47,10 @@ const CLOCK_UPDATE_MS: u32 = 1000;
 const TIMER_TASK_POLL: usize = 5;
 /// Task poll interval in milliseconds (100ms for responsive status updates)
 const TASK_POLL_MS: u32 = 100;
+/// Tail view refresh timer ID
+const TIMER_TAIL_REFRESH: usize = 6;
+/// Tail view refresh interval in milliseconds
+const TAIL_REFRESH_MS: u32 = 200;
 
 /// Application version from Cargo.toml
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -899,6 +903,8 @@ pub struct App {
     current_theme: Option<String>,
     /// Background task runner for executing tasks without visible terminal
     task_runner: TaskRunner,
+    /// Tail view widget for showing task output
+    tailview: TailView,
 }
 
 impl App {
@@ -1046,6 +1052,13 @@ impl App {
         let task_runner = TaskRunner::new();
         task_runner.cleanup_old_files();
 
+        // Initialize tail view with theme styles
+        let mut tailview = TailView::new();
+        if let Some(ref t) = theme {
+            tailview.set_style(TailViewStyle::from_theme(t, None));
+            tailview.set_button_style(task_panel_style.clone());
+        }
+
         log!("App::new() completed successfully");
         Ok(Self {
             hwnd,
@@ -1069,6 +1082,7 @@ impl App {
             current_mode: Mode::default(),
             current_theme: None,
             task_runner,
+            tailview,
         })
     }
 
@@ -1144,6 +1158,23 @@ impl App {
         }
     }
 
+    /// Start tail refresh timer (for updating output view)
+    fn start_tail_refresh_timer(&self) {
+        log!("Starting tail refresh timer ({}ms interval), timer_id={}", TAIL_REFRESH_MS, TIMER_TAIL_REFRESH);
+        unsafe {
+            let result = SetTimer(self.hwnd, TIMER_TAIL_REFRESH, TAIL_REFRESH_MS, None);
+            log!("SetTimer returned: {}", result);
+        }
+    }
+
+    /// Stop tail refresh timer
+    fn stop_tail_refresh_timer(&self) {
+        log!("Stopping tail refresh timer");
+        unsafe {
+            let _ = KillTimer(self.hwnd, TIMER_TAIL_REFRESH);
+        }
+    }
+
     /// Handle window procedure messages
     pub fn handle_message(
         &mut self,
@@ -1152,6 +1183,23 @@ impl App {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> Option<LRESULT> {
+        // Log ALL WM_TIMER events to debug
+        if msg == WM_TIMER {
+            log!(">>> WM_TIMER received: timer_id={}", wparam.0);
+        }
+
+        // Handle tail refresh timer FIRST (before translate_message)
+        if msg == WM_TIMER && wparam.0 == TIMER_TAIL_REFRESH {
+            log!(">>> TIMER_TAIL_REFRESH received, uses_tail_view={}", self.current_mode.uses_tail_view());
+            if self.current_mode.uses_tail_view() {
+                log!(">>> Calling tailview.refresh()");
+                self.tailview.refresh();
+                self.renderer.mark_dirty();
+                invalidate_window(self.hwnd);
+            }
+            return Some(LRESULT(0));
+        }
+
         // Log interesting messages
         if msg == 0x0100 || msg == 0x0101 || msg == 0x0102 || msg == 0x0010 || msg == 0x0112 {
             // WM_KEYDOWN, WM_KEYUP, WM_CHAR, WM_CLOSE, WM_SYSCOMMAND
@@ -1252,6 +1300,115 @@ impl App {
     fn handle_event(&mut self, event: &Event) -> EventResult {
         use crate::platform::win32::event::KeyCode;
 
+        // In tail view mode, handle events for the tail view
+        if self.current_mode.uses_tail_view() {
+            match event {
+                Event::KeyDown { key, .. } => {
+                    match *key {
+                        KeyCode::Escape => {
+                            // Back to launcher
+                            self.exit_tail_view();
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Enter => {
+                            // Activate selected button
+                            match self.tailview.get_selected_button() {
+                                TailViewHit::BackButton => {
+                                    self.exit_tail_view();
+                                }
+                                TailViewHit::OpenTerminalButton => {
+                                    self.open_terminal_and_close();
+                                }
+                                TailViewHit::RerunButton => {
+                                    self.rerun_task();
+                                }
+                                TailViewHit::KillButton => {
+                                    self.kill_current_task();
+                                }
+                                _ => {}
+                            }
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Up => {
+                            // Navigate to previous button
+                            self.tailview.select_prev_button();
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Down => {
+                            // Navigate to next button
+                            self.tailview.select_next_button();
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Tab => {
+                            // Tab also navigates buttons (forward)
+                            self.tailview.select_next_button();
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Left => {
+                            // Scroll up one line
+                            self.tailview.scroll_by(-1);
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Right => {
+                            // Scroll down one line
+                            self.tailview.scroll_by(1);
+                            return EventResult::repaint();
+                        }
+                        KeyCode::PageUp => {
+                            self.tailview.page_up();
+                            return EventResult::repaint();
+                        }
+                        KeyCode::PageDown => {
+                            self.tailview.page_down();
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Home => {
+                            self.tailview.scroll_to_top();
+                            return EventResult::repaint();
+                        }
+                        KeyCode::End => {
+                            self.tailview.scroll_to_bottom();
+                            return EventResult::repaint();
+                        }
+                        _ => {}
+                    }
+                }
+                Event::MouseWheel { delta, .. } => {
+                    // Scroll content
+                    if *delta > 0 {
+                        self.tailview.scroll_by(-3);
+                    } else {
+                        self.tailview.scroll_by(3);
+                    }
+                    return EventResult::repaint();
+                }
+                Event::MouseDown { x, y, .. } => {
+                    // Hit test buttons
+                    match self.tailview.hit_test(*x as f32, *y as f32) {
+                        TailViewHit::BackButton => {
+                            self.exit_tail_view();
+                            return EventResult::repaint();
+                        }
+                        TailViewHit::OpenTerminalButton => {
+                            self.open_terminal_and_close();
+                            return EventResult::repaint();
+                        }
+                        TailViewHit::RerunButton => {
+                            self.rerun_task();
+                            return EventResult::repaint();
+                        }
+                        TailViewHit::KillButton => {
+                            self.kill_current_task();
+                            return EventResult::repaint();
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+            return EventResult::none();
+        }
+
         // In grid modes, route navigation + Enter + mouse wheel to gridview.
         // Textbox still handles typing (for future filtering), but we don't use listview.
         if self.current_mode.uses_grid_view() {
@@ -1304,7 +1461,7 @@ impl App {
                                         win32::hide_window(self.hwnd);
                                         self.is_visible = false;
                                     }
-                                    Mode::Launcher => {
+                                    Mode::Launcher | Mode::TailView => {
                                         // Should not happen, but handle gracefully
                                     }
                                 }
@@ -1556,9 +1713,9 @@ impl App {
                         if let Some((group, name, script)) = task_info {
                             // Check if task is already running
                             if self.task_runner.is_running(&group, &name) {
-                                // Open tail terminal to show live output
-                                log!("Task {}:{} is running, opening tail terminal", group, name);
-                                let _ = self.open_task_tail(&group, &name);
+                                // Enter tail view to show live output
+                                log!("Task {}:{} is running, entering tail view", group, name);
+                                self.enter_tail_view(&group, &name);
                             } else {
                                 // Start task in background
                                 log!("Starting background task: {}:{}", group, name);
@@ -1744,13 +1901,13 @@ impl App {
 
                                 // Check if task is already running
                                 if self.task_runner.is_running(&group_name, &task_name) {
-                                    // Open tail terminal to show live output
+                                    // Enter tail view to show live output
                                     log!(
-                                        "Task {}:{} is running, opening tail terminal",
+                                        "Task {}:{} is running, entering tail view",
                                         group_name,
                                         task_name
                                     );
-                                    let _ = self.open_task_tail(&group_name, &task_name);
+                                    self.enter_tail_view(&group_name, &task_name);
                                 } else {
                                     // Start task in background
                                     log!("Starting background task: {}:{}", group_name, task_name);
@@ -1966,6 +2123,126 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
 
         log!("Spawned tail terminal in background thread");
         Ok(())
+    }
+
+    /// Enter tail view mode for a running task
+    fn enter_tail_view(&mut self, group: &str, name: &str) {
+        let output_file = self.task_runner.get_output_file(group, name);
+        let task_key = format!("{}:{}", group, name);
+
+        log!("Entering tail view for task: {} (file: {:?})", task_key, output_file);
+
+        self.tailview.start_tail(task_key, output_file);
+        self.current_mode = Mode::TailView;
+        self.start_tail_refresh_timer();
+        invalidate_window(self.hwnd);
+    }
+
+    /// Exit tail view mode and return to launcher
+    fn exit_tail_view(&mut self) {
+        log!("Exiting tail view, returning to launcher");
+
+        self.tailview.stop_tail();
+        self.stop_tail_refresh_timer();
+        self.current_mode = Mode::Launcher;
+        invalidate_window(self.hwnd);
+    }
+
+    /// Open external terminal for tail and close wolfy
+    fn open_terminal_and_close(&mut self) {
+        if let Some(task_key) = self.tailview.task_key().map(|s| s.to_string()) {
+            let parts: Vec<&str> = task_key.split(':').collect();
+            if parts.len() == 2 {
+                let group = parts[0];
+                let name = parts[1];
+
+                log!("Opening external terminal for {} and closing", task_key);
+
+                // Open external terminal
+                let _ = self.open_task_tail(group, name);
+
+                // Exit tail view and hide window
+                self.tailview.stop_tail();
+                self.stop_tail_refresh_timer();
+                self.current_mode = Mode::Launcher;
+                self.hide();
+            }
+        }
+    }
+
+    /// Rerun the current task (kill if running, clear output, restart)
+    fn rerun_task(&mut self) {
+        if let Some(task_key) = self.tailview.task_key().map(|s| s.to_string()) {
+            let parts: Vec<&str> = task_key.split(':').collect();
+            if parts.len() == 2 {
+                let group = parts[0].to_string();
+                let name = parts[1].to_string();
+
+                log!("Rerunning task: {}", task_key);
+
+                // Get the script from the task
+                let script = if let Some(task) = self.task_runner.get_task(&group, &name) {
+                    task.script.clone()
+                } else {
+                    // Task not found in runner, try to get it from tasks.toml
+                    if let Some(config_path) = find_tasks_config() {
+                        let config = load_tasks_config(&config_path);
+                        if let Some(task_def) = config.find_task(&group, &name) {
+                            task_def.script.clone()
+                        } else {
+                            log!("Cannot find script for task: {}", task_key);
+                            return;
+                        }
+                    } else {
+                        log!("Cannot find tasks.toml for task: {}", task_key);
+                        return;
+                    }
+                };
+
+                // Kill if running
+                if self.task_runner.is_running(&group, &name) {
+                    self.task_runner.kill_task(&group, &name);
+                }
+
+                // Clear the tailview
+                self.tailview.stop_tail();
+
+                // Restart the task
+                if let Err(e) = self.task_runner.start_task(&group, &name, &script) {
+                    log!("Failed to restart task: {}", e);
+                    return;
+                }
+
+                // Re-enter tail view for the task
+                let output_file = self.task_runner.get_output_file(&group, &name);
+                self.tailview.start_tail(task_key, output_file);
+
+                invalidate_window(self.hwnd);
+            }
+        }
+    }
+
+    /// Kill the current task being viewed in tailview
+    fn kill_current_task(&mut self) {
+        if let Some(task_key) = self.tailview.task_key().map(|s| s.to_string()) {
+            let parts: Vec<&str> = task_key.split(':').collect();
+            if parts.len() == 2 {
+                let group = parts[0].to_string();
+                let name = parts[1].to_string();
+
+                log!("Killing task: {}", task_key);
+
+                // Kill if running
+                if self.task_runner.is_running(&group, &name) {
+                    self.task_runner.kill_task(&group, &name);
+                    log!("Task killed: {}", task_key);
+                } else {
+                    log!("Task not running: {}", task_key);
+                }
+
+                invalidate_window(self.hwnd);
+            }
+        }
     }
 
     /// Launch an application
@@ -2364,6 +2641,33 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         let content_y = mainbox_padding;
         let content_width = width as f32 - mainbox_padding * 2.0;
         let content_height = height as f32 - mainbox_padding * 2.0;
+
+        // In tail view mode, render only the tail view and skip other widgets
+        if self.current_mode.uses_tail_view() {
+            let tail_rect = Rect::new(content_x, content_y, content_width, content_height);
+            let _ = self.tailview.render(&mut self.renderer, tail_rect, &self.layout_ctx);
+
+            // Draw mainbox border
+            let mainbox_bounds = D2D_RECT_F {
+                left: mainbox_padding / 2.0,
+                top: mainbox_padding / 2.0,
+                right: width as f32 - mainbox_padding / 2.0,
+                bottom: height as f32 - mainbox_padding / 2.0,
+            };
+            let _ = self.renderer.draw_rounded_rect(
+                mainbox_bounds,
+                corner_radius,
+                corner_radius,
+                self.theme_layout.window_border_color,
+                border_width,
+            );
+
+            log!("  Calling end_draw() for tail view...");
+            let opacity = self.animator.get_opacity();
+            let result = self.renderer.end_draw_with_opacity(opacity);
+            log!("  end_draw() result: {:?}, opacity: {}", result, opacity);
+            return;
+        }
 
         // Calculate layout for each mainbox child.
         // In picker modes we want a full-width listbox/grid, so we skip the wallpaper panel.
@@ -3524,7 +3828,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
     /// Returns true if size actually changed
     fn resize_for_mode(&mut self) -> bool {
         let (target_width, target_height) = match self.current_mode {
-            Mode::Launcher => (self.config.width, self.config.height),
+            Mode::Launcher | Mode::TailView => (self.config.width, self.config.height),
             Mode::ThemePicker | Mode::WallpaperPicker => {
                 let monitor_width = get_monitor_width();
                 let grid_width = (monitor_width - 60).max(800); // 30px padding on each side
@@ -3556,7 +3860,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         );
 
         match self.current_mode {
-            Mode::Launcher => {
+            Mode::Launcher | Mode::TailView => {
                 win32::reposition_window(self.hwnd, &self.config);
             }
             Mode::ThemePicker | Mode::WallpaperPicker => {
@@ -3581,7 +3885,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         // Hide window temporarily to avoid flash during resize
         let needs_resize = {
             let (target_width, target_height) = match self.current_mode {
-                Mode::Launcher => (self.config.width, self.config.height),
+                Mode::Launcher | Mode::TailView => (self.config.width, self.config.height),
                 Mode::ThemePicker | Mode::WallpaperPicker => {
                     let monitor_width = get_monitor_width();
                     ((monitor_width - 60).max(800), 520)
@@ -3661,6 +3965,11 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
 
                 log!("  Loaded {} wallpapers into grid", items.len());
                 self.gridview.set_items(items);
+            }
+            Mode::TailView => {
+                // TailView is set up via enter_tail_view(), not here
+                // Just keep the textbox unfocused
+                self.textbox.set_state(WidgetState::Normal);
             }
         }
 
