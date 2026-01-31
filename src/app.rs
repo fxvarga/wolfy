@@ -4005,9 +4005,6 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         // Resize window based on mode (this also updates renderer buffers)
         self.resize_for_mode();
 
-        // Actually show the window
-        win32::show_window(self.hwnd);
-
         // Setup based on mode (don't call resize_for_mode again)
         self.setup_mode_content();
 
@@ -4018,13 +4015,18 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         // Mark renderer as dirty to force a full render
         self.renderer.mark_dirty();
 
-        // Start fade-in animation
+        // Start fade-in animation BEFORE showing window
+        // This ensures the first paint has opacity 0
         self.animator.start_fade_in();
         self.start_animation_timer();
         log!("  Started fade-in animation");
 
-        // Force an immediate paint
+        // Paint at opacity 0 BEFORE showing window to avoid flicker
         self.paint();
+
+        // NOW show the window (it will appear with the opacity 0 frame)
+        win32::show_window(self.hwnd);
+
         log!("show() completed");
     }
 

@@ -211,11 +211,14 @@ impl GridWindow {
         // Load content based on mode
         self.load_content();
 
-        // Start fade-in animation
+        // Start fade-in animation BEFORE showing window
         self.animator.start_fade_in();
         self.start_animation_timer();
 
-        // Show the window
+        // Render at opacity 0 BEFORE showing window to avoid flicker
+        let _ = self.render();
+
+        // NOW show the window (it will appear with the opacity 0 frame)
         crate::platform::win32::show_window(self.hwnd);
         self.is_visible = true;
     }
