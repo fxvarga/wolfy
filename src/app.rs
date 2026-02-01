@@ -1323,6 +1323,62 @@ impl App {
 
         // In tail view mode, handle events for the tail view
         if self.current_mode.uses_tail_view() {
+            // Interactive terminal mode - forward most input to PTY
+            if self.tailview.is_interactive() {
+                match event {
+                    Event::Char(c) => {
+                        // Send typed character to terminal
+                        self.tailview.send_char(*c);
+                        return EventResult::repaint();
+                    }
+                    Event::KeyDown { key, modifiers } => {
+                        match *key {
+                            KeyCode::Escape => {
+                                // Escape exits interactive mode
+                                self.exit_tail_view();
+                                return EventResult::repaint();
+                            }
+                            _ => {
+                                // Forward key to terminal
+                                if self.tailview.send_key(*key, modifiers.ctrl, modifiers.shift) {
+                                    return EventResult::repaint();
+                                }
+                            }
+                        }
+                    }
+                    Event::MouseWheel { delta, .. } => {
+                        // Scroll terminal buffer
+                        if *delta > 0 {
+                            if let Some(ref mut terminal) = self.tailview.terminal_mut() {
+                                terminal.scroll_up(3);
+                            }
+                        } else {
+                            if let Some(ref mut terminal) = self.tailview.terminal_mut() {
+                                terminal.scroll_down(3);
+                            }
+                        }
+                        return EventResult::repaint();
+                    }
+                    Event::MouseDown { x, y, .. } => {
+                        // Still allow button clicks in interactive mode
+                        match self.tailview.hit_test(*x as f32, *y as f32) {
+                            TailViewHit::BackButton => {
+                                self.exit_tail_view();
+                                return EventResult::repaint();
+                            }
+                            TailViewHit::KillButton => {
+                                self.kill_current_task();
+                                return EventResult::repaint();
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+                return EventResult::none();
+            }
+
+            // Log file mode - original behavior
             match event {
                 Event::KeyDown { key, .. } => {
                     match *key {
@@ -1681,7 +1737,7 @@ impl App {
                     if task_panel_focused {
                         // Activate selected task panel item
                         // First, extract the task info to avoid borrow conflicts
-                        let task_info: Option<(String, String, String)> =
+                        let task_info: Option<(String, String, String, bool)> =
                             if let Some(ref mut task_panel) = self.task_panel {
                                 if let Some(selected_idx) = task_panel.selected_item {
                                     if let Some(item_state) =
@@ -1698,21 +1754,23 @@ impl App {
                                                 cancel: false,
                                             };
                                         } else {
-                                            // Get task info (group, name, script)
+                                            // Get task info (group, name, script, interactive)
                                             if let Some(group) =
                                                 task_panel.config.groups.get(item_state.group_index)
                                             {
                                                 if let Some(task_idx) = item_state.task_index {
                                                     if let Some(task) = group.tasks.get(task_idx) {
                                                         log!(
-                                                            "Task selected via keyboard: {} ({})",
+                                                            "Task selected via keyboard: {} ({}) interactive={}",
                                                             task.name,
-                                                            task.script
+                                                            task.script,
+                                                            task.interactive
                                                         );
                                                         Some((
                                                             group.name.clone(),
                                                             task.name.clone(),
                                                             task.script.clone(),
+                                                            task.interactive,
                                                         ))
                                                     } else {
                                                         None
@@ -1735,14 +1793,17 @@ impl App {
                             };
 
                         // Now handle the task outside of the borrow
-                        if let Some((group, name, script)) = task_info {
-                            // Check if task is already running
-                            if self.task_runner.is_running(&group, &name) {
-                                // Enter tail view to show live output
+                        if let Some((group, name, script, interactive)) = task_info {
+                            if interactive {
+                                // Interactive task: go directly to tail view (PTY will be spawned there)
+                                log!("Interactive task {}:{}, entering tail view", group, name);
+                                self.enter_tail_view(&group, &name);
+                            } else if self.task_runner.is_running(&group, &name) {
+                                // Non-interactive task already running: show output
                                 log!("Task {}:{} is running, entering tail view", group, name);
                                 self.enter_tail_view(&group, &name);
                             } else {
-                                // Start task in background
+                                // Start non-interactive task in background
                                 log!("Starting background task: {}:{}", group, name);
                                 if let Err(e) = self.task_runner.start_task(&group, &name, &script)
                                 {
@@ -1922,11 +1983,15 @@ impl App {
                                 let group_name = group.name.clone();
                                 let task_name = task.name.clone();
                                 let script = task.script.clone();
-                                log!("Task clicked: {}:{} ({})", group_name, task_name, script);
+                                let interactive = task.interactive;
+                                log!("Task clicked: {}:{} ({}) interactive={}", group_name, task_name, script, interactive);
 
-                                // Check if task is already running
-                                if self.task_runner.is_running(&group_name, &task_name) {
-                                    // Enter tail view to show live output
+                                if interactive {
+                                    // Interactive task: go directly to tail view (PTY spawned there)
+                                    log!("Interactive task {}:{}, entering tail view", group_name, task_name);
+                                    self.enter_tail_view(&group_name, &task_name);
+                                } else if self.task_runner.is_running(&group_name, &task_name) {
+                                    // Non-interactive task already running: show output
                                     log!(
                                         "Task {}:{} is running, entering tail view",
                                         group_name,
@@ -1934,7 +1999,7 @@ impl App {
                                     );
                                     self.enter_tail_view(&group_name, &task_name);
                                 } else {
-                                    // Start task in background
+                                    // Start non-interactive task in background
                                     log!("Starting background task: {}:{}", group_name, task_name);
                                     if let Err(e) = self.task_runner.start_task(
                                         &group_name,
@@ -2152,15 +2217,67 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
 
     /// Enter tail view mode for a running task
     fn enter_tail_view(&mut self, group: &str, name: &str) {
-        let output_file = self.task_runner.get_output_file(group, name);
         let task_key = format!("{}:{}", group, name);
+        log!("Entering tail view for task: {}", task_key);
 
-        log!("Entering tail view for task: {} (file: {:?})", task_key, output_file);
+        // Check if the task is configured as interactive
+        let interactive = if let Some(config_path) = find_tasks_config() {
+            let config = load_tasks_config(&config_path);
+            config.find_task(group, name).map_or(false, |t| t.interactive)
+        } else {
+            false
+        };
 
-        self.tailview.start_tail(task_key, output_file);
-        self.current_mode = Mode::TailView;
-        self.start_tail_refresh_timer();
-        invalidate_window(self.hwnd);
+        if interactive {
+            // Interactive mode: spawn PTY and use terminal emulation
+            log!("Task {} is interactive, spawning PTY", task_key);
+
+            // Get the script for the task
+            let script = if let Some(config_path) = find_tasks_config() {
+                let config = load_tasks_config(&config_path);
+                config.find_task(group, name)
+                    .map(|t| t.script.clone())
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+
+            // Load current theme for terminal colors
+            let theme = self.load_current_theme();
+
+            // Start interactive task with PTY
+            match self.task_runner.start_interactive_task(
+                group,
+                name,
+                &script,
+                theme.as_ref(),
+            ) {
+                Ok(terminal) => {
+                    self.tailview.start_interactive(task_key, terminal);
+                    self.current_mode = Mode::TailView;
+                    self.start_tail_refresh_timer();
+                    invalidate_window(self.hwnd);
+                }
+                Err(e) => {
+                    log!("Failed to start interactive task: {}", e);
+                    // Fall back to log file mode
+                    let output_file = self.task_runner.get_output_file(group, name);
+                    self.tailview.start_tail(task_key, output_file);
+                    self.current_mode = Mode::TailView;
+                    self.start_tail_refresh_timer();
+                    invalidate_window(self.hwnd);
+                }
+            }
+        } else {
+            // Log file mode: use file-based output
+            let output_file = self.task_runner.get_output_file(group, name);
+            log!("Task {} is file-based, using log file: {:?}", task_key, output_file);
+
+            self.tailview.start_tail(task_key, output_file);
+            self.current_mode = Mode::TailView;
+            self.start_tail_refresh_timer();
+            invalidate_window(self.hwnd);
+        }
     }
 
     /// Exit tail view mode and return to launcher
@@ -2495,6 +2612,22 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
     pub fn set_current_theme(&mut self, theme_name: Option<String>) {
         log!("App::set_current_theme({:?})", theme_name);
         self.current_theme = theme_name;
+    }
+
+    /// Load current theme from disk (for getting terminal colors, etc.)
+    fn load_current_theme(&self) -> Option<ThemeTree> {
+        let core_path = find_config_file("core.rasi");
+        if core_path.exists() {
+            let theme_filename = self.current_theme
+                .as_ref()
+                .map(|name| ThemeTree::theme_name_to_filename(name))
+                .unwrap_or_else(|| "catppuccin_mocha".to_string());
+            let theme_colors_path = find_config_file(&format!("themes/{}.rasi", theme_filename));
+            ThemeTree::load_layered(&[&core_path, &theme_colors_path]).ok()
+        } else {
+            let theme_path = find_config_file("default.rasi");
+            ThemeTree::load(&theme_path).ok()
+        }
     }
 
     /// Reload theme from disk and apply all changes

@@ -11,7 +11,7 @@
 
 * {
     /* ─── Terminal Font ─── */
-    term-font:              "Cascadia Code";
+    term-font: "Cascadia Mono";
 
     /* ─── Terminal ANSI Colors (Rosé Pine Moon) ─── */
     term-black:             #393552;

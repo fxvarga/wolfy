@@ -10,7 +10,7 @@
 
 * {
     /* ─── Terminal Font ─── */
-    term-font:              "Cascadia Code";
+    term-font: "Cascadia Mono";
 
     /* ─── Terminal ANSI Colors (Matrix Green) ─── */
     term-black:             #151720;

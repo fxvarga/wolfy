@@ -9,6 +9,30 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 * {
+    /* ─── Terminal Font ─── */
+    term-font: "Cascadia Mono";
+
+    /* ─── Terminal ANSI Colors (Nord) ─── */
+    term-black:             #3b4252;
+    term-red:               #bf616a;
+    term-green:             #a3be8c;
+    term-yellow:            #ebcb8b;
+    term-blue:              #81a1c1;
+    term-magenta:           #b48ead;
+    term-cyan:              #88c0d0;
+    term-white:             #e5e9f0;
+    term-bright-black:      #4c566a;
+    term-bright-red:        #bf616a;
+    term-bright-green:      #a3be8c;
+    term-bright-yellow:     #ebcb8b;
+    term-bright-blue:       #81a1c1;
+    term-bright-magenta:    #b48ead;
+    term-bright-cyan:       #8fbcbb;
+    term-bright-white:      #eceff4;
+    term-foreground:        #d8dee9;
+    term-background:        #2e3440;
+    term-cursor:            #88c0d0;
+
     /* ─── Surface Colors (Steel Blue) ─── */
     surface-deep:           #2e3440;      /* Nord bg - polar night */
     surface-elevated:       #3b4252;      /* Polar night 1 */

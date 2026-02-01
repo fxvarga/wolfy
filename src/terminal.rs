@@ -432,9 +432,15 @@ impl Terminal {
         self.term.screen_lines()
     }
 
-    /// Get a cell at the given position
+    /// Get a cell at the given position (0-indexed from top of visible screen)
     pub fn cell(&self, col: usize, row: usize) -> Option<&Cell> {
         use alacritty_terminal::index::{Column, Line};
+
+        // Bounds check
+        if col >= self.cols() || row >= self.rows() {
+            return None;
+        }
+
         let point = alacritty_terminal::index::Point::new(Line(row as i32), Column(col));
         Some(&self.term.grid()[point])
     }
@@ -452,8 +458,8 @@ impl Terminal {
 
     /// Check if cursor should be visible
     pub fn cursor_visible(&self) -> bool {
-        // Check if cursor is hidden by escape sequence
-        !self.term.mode().contains(TermMode::SHOW_CURSOR)
+        // SHOW_CURSOR mode means cursor is visible (not hidden by escape sequence)
+        self.term.mode().contains(TermMode::SHOW_CURSOR)
     }
 
     /// Get the terminal title (if set by escape sequence)

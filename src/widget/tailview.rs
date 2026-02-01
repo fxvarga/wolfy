@@ -1,6 +1,10 @@
 //! Tail View widget - Embedded terminal output viewer
 //!
 //! Displays task output in a themed terminal-like view with scrolling.
+//! Supports two modes:
+//! - Log mode: File-based output from non-interactive tasks
+//! - Interactive mode: PTY-based terminal for interactive tasks (uses alacritty_terminal)
+//!
 //! Features a button bar on the left (compact icon style like task panel)
 //! with Back and Open Terminal buttons.
 
@@ -11,8 +15,10 @@ use std::time::Instant;
 
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 
+use crate::platform::win32::event::KeyCode;
 use crate::platform::win32::Renderer;
 use crate::platform::Event;
+use crate::terminal::{Terminal, TerminalColors, TerminalConfig};
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, LayoutContext, Rect};
 
@@ -21,6 +27,16 @@ use super::taskpanel::TaskPanelStyle;
 
 /// Maximum number of lines to keep in buffer
 const MAX_LINES: usize = 10000;
+
+/// Mode of the tail view
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TailViewMode {
+    /// File-based log tailing (default for non-interactive tasks)
+    #[default]
+    LogFile,
+    /// Interactive PTY terminal (for interactive tasks)
+    Interactive,
+}
 
 /// Result of hit testing the tail view
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,7 +122,9 @@ impl TailViewStyle {
 
 /// Tail view widget for displaying task output
 pub struct TailView {
-    /// Lines of output
+    /// Current mode (log file or interactive)
+    mode: TailViewMode,
+    /// Lines of output (used in LogFile mode)
     lines: Vec<String>,
     /// Scroll offset (line index at top of view)
     scroll_offset: usize,
@@ -114,8 +132,10 @@ pub struct TailView {
     auto_scroll: bool,
     /// Task being tailed (group:name)
     task_key: Option<String>,
-    /// Path to the log file
+    /// Path to the log file (used in LogFile mode)
     log_path: Option<PathBuf>,
+    /// Interactive terminal (used in Interactive mode)
+    terminal: Option<Terminal>,
     /// Cached bounds
     bounds: Option<Rect>,
     /// Cached scale factor
@@ -144,11 +164,13 @@ impl TailView {
     /// Create a new tail view
     pub fn new() -> Self {
         Self {
+            mode: TailViewMode::LogFile,
             lines: Vec::new(),
             scroll_offset: 0,
             auto_scroll: true,
             task_key: None,
             log_path: None,
+            terminal: None,
             bounds: None,
             cached_scale: 1.0,
             style: TailViewStyle::default(),
@@ -163,6 +185,16 @@ impl TailView {
         }
     }
 
+    /// Get current mode
+    pub fn mode(&self) -> TailViewMode {
+        self.mode
+    }
+
+    /// Check if in interactive mode
+    pub fn is_interactive(&self) -> bool {
+        self.mode == TailViewMode::Interactive
+    }
+
     /// Set the style from theme
     pub fn set_style(&mut self, style: TailViewStyle) {
         self.style = style;
@@ -173,20 +205,41 @@ impl TailView {
         self.button_style = style;
     }
 
-    /// Start tailing a task
+    /// Start tailing a task (log file mode)
     pub fn start_tail(&mut self, task_key: String, log_path: PathBuf) {
+        self.mode = TailViewMode::LogFile;
         self.task_key = Some(task_key);
         self.log_path = Some(log_path);
+        self.terminal = None;
         self.lines.clear();
         self.scroll_offset = 0;
         self.auto_scroll = true;
         self.refresh();
     }
 
+    /// Start an interactive terminal session
+    pub fn start_interactive(&mut self, task_key: String, terminal: Terminal) {
+        crate::log!("TailView: Starting interactive mode for {}", task_key);
+        self.mode = TailViewMode::Interactive;
+        self.task_key = Some(task_key);
+        self.log_path = None;
+        self.lines.clear();
+        self.terminal = Some(terminal);
+        self.scroll_offset = 0;
+        self.auto_scroll = true;
+    }
+
+    /// Get mutable access to the terminal (for input handling)
+    pub fn terminal_mut(&mut self) -> Option<&mut Terminal> {
+        self.terminal.as_mut()
+    }
+
     /// Stop tailing and clear buffer
     pub fn stop_tail(&mut self) {
+        self.mode = TailViewMode::LogFile;
         self.task_key = None;
         self.log_path = None;
+        self.terminal = None;
         self.lines.clear();
         self.scroll_offset = 0;
         self.selected_button = 0;
@@ -198,9 +251,17 @@ impl TailView {
         self.task_key.as_deref()
     }
 
-    /// Refresh lines from log file
+    /// Refresh content (log file or terminal)
     pub fn refresh(&mut self) {
         self.last_refresh = Instant::now();
+
+        // In interactive mode, poll the PTY instead
+        if self.mode == TailViewMode::Interactive {
+            if let Some(ref mut terminal) = self.terminal {
+                terminal.poll_pty();
+            }
+            return;
+        }
 
         let Some(path) = &self.log_path else {
             return;
@@ -233,9 +294,15 @@ impl TailView {
         }
     }
 
-    /// Check if we should refresh based on time elapsed (200ms)
+    /// Check if we should refresh based on time elapsed
     pub fn maybe_refresh(&mut self) {
-        if self.log_path.is_some() && self.last_refresh.elapsed().as_millis() >= 200 {
+        let interval = if self.mode == TailViewMode::Interactive {
+            50 // 50ms for interactive (faster updates)
+        } else {
+            200 // 200ms for log file
+        };
+
+        if self.last_refresh.elapsed().as_millis() >= interval as u128 {
             self.refresh();
         }
     }
@@ -300,6 +367,118 @@ impl TailView {
             2 => TailViewHit::RerunButton,
             3 => TailViewHit::KillButton,
             _ => TailViewHit::BackButton,
+        }
+    }
+
+    /// Send a character to the terminal (interactive mode only)
+    pub fn send_char(&mut self, c: char) {
+        if self.mode != TailViewMode::Interactive {
+            return;
+        }
+        if let Some(ref mut terminal) = self.terminal {
+            let mut buf = [0u8; 4];
+            let s = c.encode_utf8(&mut buf);
+            terminal.write_to_pty(s.as_bytes());
+        }
+    }
+
+    /// Send a key to the terminal (interactive mode only)
+    /// Converts KeyCode to the appropriate escape sequence for PTY input.
+    /// Returns true if the key was consumed by the terminal.
+    pub fn send_key(&mut self, key: KeyCode, ctrl: bool, shift: bool) -> bool {
+        if self.mode != TailViewMode::Interactive {
+            return false;
+        }
+        let Some(ref mut terminal) = self.terminal else {
+            return false;
+        };
+
+        // Build escape sequence for the key
+        let seq: Option<&[u8]> = match key {
+            KeyCode::Enter => Some(b"\r"),
+            KeyCode::Backspace => {
+                if ctrl {
+                    Some(b"\x17") // Ctrl+Backspace = delete word
+                } else {
+                    Some(b"\x7f") // ASCII DEL
+                }
+            }
+            KeyCode::Tab => {
+                if shift {
+                    Some(b"\x1b[Z") // Shift+Tab = backtab
+                } else {
+                    Some(b"\t")
+                }
+            }
+            KeyCode::Space => Some(b" "),
+            KeyCode::Delete => Some(b"\x1b[3~"),
+            KeyCode::Insert => Some(b"\x1b[2~"),
+            KeyCode::Home => Some(b"\x1b[H"),
+            KeyCode::End => Some(b"\x1b[F"),
+            KeyCode::PageUp => Some(b"\x1b[5~"),
+            KeyCode::PageDown => Some(b"\x1b[6~"),
+            KeyCode::Up => Some(b"\x1b[A"),
+            KeyCode::Down => Some(b"\x1b[B"),
+            KeyCode::Right => Some(b"\x1b[C"),
+            KeyCode::Left => Some(b"\x1b[D"),
+            // Ctrl+letter combinations
+            KeyCode::A if ctrl => Some(b"\x01"),
+            KeyCode::B if ctrl => Some(b"\x02"),
+            KeyCode::C if ctrl => Some(b"\x03"),
+            KeyCode::D if ctrl => Some(b"\x04"),
+            KeyCode::E if ctrl => Some(b"\x05"),
+            KeyCode::F if ctrl => Some(b"\x06"),
+            KeyCode::G if ctrl => Some(b"\x07"),
+            KeyCode::H if ctrl => Some(b"\x08"),
+            KeyCode::I if ctrl => Some(b"\x09"),
+            KeyCode::J if ctrl => Some(b"\x0a"),
+            KeyCode::K if ctrl => Some(b"\x0b"),
+            KeyCode::L if ctrl => Some(b"\x0c"),
+            KeyCode::M if ctrl => Some(b"\x0d"),
+            KeyCode::N if ctrl => Some(b"\x0e"),
+            KeyCode::O if ctrl => Some(b"\x0f"),
+            KeyCode::P if ctrl => Some(b"\x10"),
+            KeyCode::Q if ctrl => Some(b"\x11"),
+            KeyCode::R if ctrl => Some(b"\x12"),
+            KeyCode::S if ctrl => Some(b"\x13"),
+            KeyCode::T if ctrl => Some(b"\x14"),
+            KeyCode::U if ctrl => Some(b"\x15"),
+            KeyCode::V if ctrl => Some(b"\x16"),
+            KeyCode::W if ctrl => Some(b"\x17"),
+            KeyCode::X if ctrl => Some(b"\x18"),
+            KeyCode::Y if ctrl => Some(b"\x19"),
+            KeyCode::Z if ctrl => Some(b"\x1a"),
+            // Function keys
+            KeyCode::F1 => Some(b"\x1bOP"),
+            KeyCode::F2 => Some(b"\x1bOQ"),
+            KeyCode::F3 => Some(b"\x1bOR"),
+            KeyCode::F4 => Some(b"\x1bOS"),
+            KeyCode::F5 => Some(b"\x1b[15~"),
+            KeyCode::F6 => Some(b"\x1b[17~"),
+            KeyCode::F7 => Some(b"\x1b[18~"),
+            KeyCode::F8 => Some(b"\x1b[19~"),
+            KeyCode::F9 => Some(b"\x1b[20~"),
+            KeyCode::F10 => Some(b"\x1b[21~"),
+            KeyCode::F11 => Some(b"\x1b[23~"),
+            KeyCode::F12 => Some(b"\x1b[24~"),
+            // Letter and number keys (non-ctrl) - handled via WM_CHAR
+            KeyCode::A | KeyCode::B | KeyCode::C | KeyCode::D | KeyCode::E |
+            KeyCode::F | KeyCode::G | KeyCode::H | KeyCode::I | KeyCode::J |
+            KeyCode::K | KeyCode::L | KeyCode::M | KeyCode::N | KeyCode::O |
+            KeyCode::P | KeyCode::Q | KeyCode::R | KeyCode::S | KeyCode::T |
+            KeyCode::U | KeyCode::V | KeyCode::W | KeyCode::X | KeyCode::Y |
+            KeyCode::Z => None,
+            KeyCode::Num0 | KeyCode::Num1 | KeyCode::Num2 | KeyCode::Num3 |
+            KeyCode::Num4 | KeyCode::Num5 | KeyCode::Num6 | KeyCode::Num7 |
+            KeyCode::Num8 | KeyCode::Num9 => None,
+            _ => None,
+        };
+
+        if let Some(data) = seq {
+            terminal.write_to_pty(data);
+            true
+        } else {
+            false
         }
     }
 
@@ -564,6 +743,49 @@ impl TailView {
         let content_width = rect.width - button_width - button_padding * 2.0 - padding * 2.0 - 12.0 * scale; // Reserve space for scrollbar
         let content_height = rect.height - padding * 2.0;
 
+        // Branch rendering based on mode
+        match self.mode {
+            TailViewMode::Interactive => {
+                self.render_terminal_content(
+                    renderer,
+                    content_x,
+                    content_y,
+                    content_width,
+                    content_height,
+                    scale,
+                )?;
+            }
+            TailViewMode::LogFile => {
+                self.render_log_content(
+                    renderer,
+                    content_x,
+                    content_y,
+                    content_width,
+                    content_height,
+                    font_size,
+                    line_spacing,
+                    padding,
+                    rect,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Render log file content (text lines)
+    fn render_log_content(
+        &mut self,
+        renderer: &mut Renderer,
+        content_x: f32,
+        content_y: f32,
+        content_width: f32,
+        content_height: f32,
+        font_size: f32,
+        line_spacing: f32,
+        padding: f32,
+        rect: Rect,
+    ) -> Result<(), windows::core::Error> {
         // Create text format WITHOUT word wrapping (terminal-style, clip long lines)
         let text_format = match renderer.create_text_format(
             &self.style.font_family,
@@ -611,7 +833,7 @@ impl TailView {
 
         // Draw scrollbar if needed
         if self.lines.len() > self.visible_lines {
-            let scrollbar_width = 6.0 * scale;
+            let scrollbar_width = 6.0 * self.cached_scale;
             let scrollbar_x = rect.x + rect.width - padding - scrollbar_width;
             let scrollbar_y = content_y;
             let scrollbar_height = content_height;
@@ -632,8 +854,9 @@ impl TailView {
             )?;
 
             // Thumb
+            let max_scroll = self.lines.len().saturating_sub(self.visible_lines);
             let thumb_ratio = self.visible_lines as f32 / self.lines.len() as f32;
-            let thumb_height = (scrollbar_height * thumb_ratio).max(20.0 * scale);
+            let thumb_height = (scrollbar_height * thumb_ratio).max(20.0 * self.cached_scale);
             let scroll_ratio = if max_scroll > 0 {
                 self.scroll_offset as f32 / max_scroll as f32
             } else {
@@ -654,6 +877,122 @@ impl TailView {
                 scrollbar_width / 2.0,
                 thumb_color,
             )?;
+        }
+
+        Ok(())
+    }
+
+    /// Render interactive terminal content (using alacritty_terminal grid)
+    fn render_terminal_content(
+        &mut self,
+        renderer: &mut Renderer,
+        content_x: f32,
+        content_y: f32,
+        content_width: f32,
+        content_height: f32,
+        scale: f32,
+    ) -> Result<(), windows::core::Error> {
+        let Some(ref mut terminal) = self.terminal else {
+            // No terminal attached, show placeholder
+            let text = "Connecting...";
+            let font_size = self.style.font_size * scale;
+            if let Ok(fmt) = renderer.create_text_format(&self.style.font_family, font_size, false, false) {
+                let text_rect = D2D_RECT_F {
+                    left: content_x,
+                    top: content_y,
+                    right: content_x + content_width,
+                    bottom: content_y + content_height,
+                };
+                renderer.draw_text(text, &fmt, text_rect, self.style.text_color)?;
+            }
+            return Ok(());
+        };
+
+        // Calculate cell dimensions based on font
+        let font_size = terminal.config.font_size * scale;
+        let cell_width = font_size * 0.6; // Approximate monospace width
+        let cell_height = font_size * 1.2; // Line height
+
+        // Calculate how many rows/cols fit in visible area
+        let visible_cols = ((content_width / cell_width) as u16).max(1);
+        let visible_rows = ((content_height / cell_height) as u16).max(1);
+
+        // Resize terminal/PTY if size changed
+        let (current_cols, current_rows) = terminal.size();
+        if current_cols != visible_cols || current_rows != visible_rows {
+            terminal.resize(visible_cols, visible_rows);
+        }
+
+        // Get updated dimensions after potential resize
+        let term_cols = terminal.cols();
+        let term_rows = terminal.rows();
+        let colors = &terminal.colors;
+
+        // Create monospace text format
+        let text_format = match renderer.create_text_format(
+            &terminal.config.font_family,
+            font_size,
+            false,
+            false,
+        ) {
+            Ok(f) => f,
+            Err(_) => return Ok(()),
+        };
+
+        // Draw terminal background
+        let term_bg_rect = D2D_RECT_F {
+            left: content_x,
+            top: content_y,
+            right: content_x + content_width,
+            bottom: content_y + content_height,
+        };
+        renderer.fill_rect(term_bg_rect, colors.background)?;
+
+        // Get cursor position for highlighting
+        let (cursor_col, cursor_row) = terminal.cursor_position();
+        let cursor_visible = terminal.cursor_visible();
+
+        // Render each cell in the grid (terminal is already sized to fit)
+        for row in 0..term_rows {
+            let y = content_y + (row as f32) * cell_height;
+
+            for col in 0..term_cols {
+                if let Some(cell) = terminal.cell(col, row) {
+                    let x = content_x + (col as f32) * cell_width;
+
+                    let cell_rect = D2D_RECT_F {
+                        left: x,
+                        top: y,
+                        right: x + cell_width,
+                        bottom: y + cell_height,
+                    };
+
+                    // Draw cell background if not default
+                    let bg_color = colors.resolve_color(cell.bg);
+                    if bg_color != colors.background {
+                        renderer.fill_rect(cell_rect, bg_color)?;
+                    }
+
+                    // Draw cursor
+                    if cursor_visible && col == cursor_col && row == cursor_row {
+                        let cursor_color = colors.cursor;
+                        renderer.fill_rect(cell_rect, cursor_color)?;
+                    }
+
+                    // Draw character
+                    let c = cell.c;
+                    if c != ' ' && c != '\0' {
+                        let fg_color = if cursor_visible && col == cursor_col && row == cursor_row {
+                            colors.background // Inverted for cursor
+                        } else {
+                            colors.resolve_color(cell.fg)
+                        };
+
+                        let char_str = c.to_string();
+                        renderer.draw_text(&char_str, &text_format, cell_rect, fg_color)?;
+                    }
+                }
+            }
         }
 
         Ok(())

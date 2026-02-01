@@ -2,6 +2,10 @@
 //!
 //! Runs PowerShell tasks in the background, captures output to files,
 //! and provides status tracking for visual indicators.
+//!
+//! Supports two modes:
+//! - File-based: Output captured to log files (default)
+//! - Interactive: PTY-based terminal for shell access
 
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -12,6 +16,9 @@ use std::process::{Child, Command, Stdio};
 use std::time::Instant;
 
 use crate::log;
+use crate::pty::Pty;
+use crate::terminal::{Terminal, TerminalColors, TerminalConfig};
+use crate::theme::ThemeTree;
 
 /// Status of a running task
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -156,6 +163,80 @@ impl TaskRunner {
 
         self.tasks.insert(key, task);
         Ok(())
+    }
+
+    /// Start an interactive task using PTY
+    ///
+    /// Returns a Terminal that can be used for rendering and input.
+    /// The task will not be tracked in the task runner for output file handling.
+    pub fn start_interactive_task(
+        &mut self,
+        group: &str,
+        name: &str,
+        script: &str,
+        theme: Option<&ThemeTree>,
+    ) -> Result<Terminal, String> {
+        let key = Self::task_key(group, name);
+        log!("Starting interactive task: {} ({})", key, script);
+
+        // Kill any existing task with this key (interactive tasks start fresh each time)
+        if self.is_running(group, name) {
+            log!("Killing existing task {} before starting interactive", key);
+            self.kill_task(group, name);
+        }
+        // Also remove stale task entries that aren't running
+        self.tasks.remove(&key);
+
+        // Build terminal configuration from theme
+        let config = if let Some(t) = theme {
+            TerminalConfig {
+                cols: 120,
+                rows: 30,
+                scrollback_lines: 1000,
+                font_family: t.get_string("terminal", None, "font-family", "Cascadia Code"),
+                font_size: t.get_number("terminal", None, "font-size", 14.0) as f32,
+            }
+        } else {
+            TerminalConfig::default()
+        };
+
+        // Load colors from theme
+        let colors = theme
+            .map(|t| TerminalColors::from_theme(t))
+            .unwrap_or_default();
+
+        // Build the command: use pwsh directly (faster than checking version)
+        // If pwsh isn't available, PTY spawn will fail and we handle it
+        let command = if script.trim().is_empty() {
+            "pwsh".to_string()
+        } else {
+            format!("pwsh -ExecutionPolicy Bypass -Command \"{}\"", script)
+        };
+
+        log!("Interactive command: {}", command);
+
+        // Spawn PTY with the command
+        let pty = Pty::spawn_command(&command, config.cols, config.rows)
+            .map_err(|e| format!("Failed to spawn PTY: {:?}", e))?;
+
+        // Create terminal and attach PTY
+        let mut terminal = Terminal::new(config, colors);
+        terminal.attach_pty(pty);
+
+        // Track as running (we store a dummy task without output file)
+        let output_file = self.get_output_file(group, name);
+        let task = RunningTask {
+            name: name.to_string(),
+            group: group.to_string(),
+            script: script.to_string(),
+            child: None, // No child process to track; PTY handles it
+            output_file,
+            started_at: Instant::now(),
+            status: TaskStatus::Running,
+        };
+        self.tasks.insert(key, task);
+
+        Ok(terminal)
     }
 
     /// Check if a task is currently running

@@ -11,7 +11,6 @@ name = "PF"
 icon = "\uf121"
 expanded = true
 
-
 [[groups.tasks]]
 name = "Run Backend"
 icon = "\uf233"
@@ -38,16 +37,22 @@ name = "Running Processes"
 icon = "\uf0ae"
 script = "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU, WorkingSet"
 
-# Network tools group
+# Agents group - interactive shells
 [[groups]]
 name = "Agents"
 icon = "\uf0ac"
-expanded = false
+expanded = true
 
 [[groups.tasks]]
 name = "Copilot"
-icon = "\uf0ac"
+icon = "\ue70c"
 script = "copilot"
+interactive = true
+
+[[groups.tasks]]
+name = "DNS Lookup"
+icon = "\uf0ac"
+script = "Resolve-DnsName google.com"
 
 [[groups.tasks]]
 name = "Ping Test"

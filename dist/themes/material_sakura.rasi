@@ -9,6 +9,30 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 * {
+    /* ─── Terminal Font ─── */
+    term-font: "Cascadia Mono";
+
+    /* ─── Terminal ANSI Colors (Sakura/Dawn) ─── */
+    term-black:             #6e6a86;
+    term-red:               #b4637a;
+    term-green:             #56949f;
+    term-yellow:            #ea9d34;
+    term-blue:              #286983;
+    term-magenta:           #907aa9;
+    term-cyan:              #d7827e;
+    term-white:             #575279;
+    term-bright-black:      #9893a5;
+    term-bright-red:        #b4637a;
+    term-bright-green:      #56949f;
+    term-bright-yellow:     #ea9d34;
+    term-bright-blue:       #286983;
+    term-bright-magenta:    #907aa9;
+    term-bright-cyan:       #d7827e;
+    term-bright-white:      #575279;
+    term-foreground:        #575279;
+    term-background:        #faf4ed;
+    term-cursor:            #d7827e;
+
     /* ─── Surface Colors (Soft White) ─── */
     surface-deep:           #fffaf3;      /* Warm white */
     surface-elevated:       #faf4ed;      /* Parchment */

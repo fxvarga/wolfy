@@ -11,7 +11,7 @@
 
 * {
     /* ─── Terminal Font ─── */
-    term-font:              "Cascadia Code";
+    term-font: "Cascadia Mono";
 
     /* ─── Terminal ANSI Colors (Gruvbox) ─── */
     term-black:             #282828;
