@@ -40,7 +40,7 @@ window {
     background-color: window-bg;
     border-radius: 24;
     border-color: transparent;
-    hotkey: "ctrl+0";
+    hotkey: "alt+space";
     animation-duration: 280;
     animation-easing: ease-out-expo;
 }
@@ -150,7 +150,7 @@ listview {
     padding-right: 16;
     padding-bottom: 24;
     padding-left: 16;
-    spacing: 4;
+    spacing: 14;
     lines: 9;
     scrollbar-width: 0;
     scrollbar-color: accent-primary-alpha;
@@ -171,7 +171,7 @@ element {
     padding-vertical: 10;
     icon-size: 22;
     icon-spacing: 10;
-    height: 48;
+    height: 58;
     border-radius: 10;
 }
 

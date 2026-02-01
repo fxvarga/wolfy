@@ -45,9 +45,9 @@ icon = "\uf0ac"
 expanded = false
 
 [[groups.tasks]]
-name = "DNS Lookup"
+name = "Copilot"
 icon = "\uf0ac"
-script = "Resolve-DnsName google.com"
+script = "copilot"
 
 [[groups.tasks]]
 name = "Ping Test"

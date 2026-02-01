@@ -564,8 +564,8 @@ impl TailView {
         let content_width = rect.width - button_width - button_padding * 2.0 - padding * 2.0 - 12.0 * scale; // Reserve space for scrollbar
         let content_height = rect.height - padding * 2.0;
 
-        // Create text format with word wrapping
-        let text_format = match renderer.create_text_format_wrap(
+        // Create text format WITHOUT word wrapping (terminal-style, clip long lines)
+        let text_format = match renderer.create_text_format(
             &self.style.font_family,
             font_size,
             false,

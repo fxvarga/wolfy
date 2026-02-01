@@ -171,13 +171,15 @@ impl TaskPanelState {
         if focused {
             // Expand the panel when focused
             self.expanded = true;
-            // Select first item if nothing selected
-            if self.selected_item.is_none() && !self.item_states.is_empty() {
+            // Always reset selection to first item when gaining focus
+            if !self.item_states.is_empty() {
                 self.selected_item = Some(0);
             }
         } else {
             // Collapse the panel when losing focus
             self.expanded = false;
+            // Clear selection so next focus starts fresh
+            self.selected_item = None;
             // Also collapse all groups
             for expanded in &mut self.expanded_groups {
                 *expanded = false;
