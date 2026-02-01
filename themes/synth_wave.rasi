@@ -10,6 +10,30 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 * {
+    /* ─── Terminal Font ─── */
+    term-font:              "Cascadia Code";
+
+    /* ─── Terminal ANSI Colors (Synthwave) ─── */
+    term-black:             #262335;
+    term-red:               #f97e72;
+    term-green:             #72f1b8;
+    term-yellow:            #fede5d;
+    term-blue:              #36f9f6;
+    term-magenta:           #ff7edb;
+    term-cyan:              #03edf9;
+    term-white:             #e8e0f0;
+    term-bright-black:      #6b5f80;
+    term-bright-red:        #ff8a80;
+    term-bright-green:      #8affc6;
+    term-bright-yellow:     #ffe66d;
+    term-bright-blue:       #6bfcf9;
+    term-bright-magenta:    #ff9de6;
+    term-bright-cyan:       #03edf9;
+    term-bright-white:      #ffffff;
+    term-foreground:        #e8e0f0;
+    term-background:        #1a1625;
+    term-cursor:            #03edf9;
+
     /* ─── Surface Colors (Deep Purple) ─── */
     surface-deep:           #1a1625;      /* Deepest purple-black */
     surface-elevated:       #262335;      /* Elevated purple */

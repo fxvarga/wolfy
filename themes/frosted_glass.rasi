@@ -9,6 +9,30 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 * {
+    /* ─── Terminal Font ─── */
+    term-font:              "Cascadia Code";
+
+    /* ─── Terminal ANSI Colors (Arctic Light) ─── */
+    term-black:             #6b8baa;
+    term-red:               #bf616a;
+    term-green:             #a3be8c;
+    term-yellow:            #ebcb8b;
+    term-blue:              #5e81ac;
+    term-magenta:           #b48ead;
+    term-cyan:              #88c0d0;
+    term-white:             #3a6298;
+    term-bright-black:      #a0b4c8;
+    term-bright-red:        #c76b74;
+    term-bright-green:      #b4d49a;
+    term-bright-yellow:     #f0d79c;
+    term-bright-blue:       #7094bb;
+    term-bright-magenta:    #c49dbc;
+    term-bright-cyan:       #96cce0;
+    term-bright-white:      #1e4c84;
+    term-foreground:        #1e4c84;
+    term-background:        #f5f8fa;
+    term-cursor:            #7ed6ff;
+
     /* ─── Surface Colors (Frosted Light) ─── */
     surface-deep:           #f5f8fa;      /* Ice white */
     surface-elevated:       #e8eef2;      /* Frosted surface */

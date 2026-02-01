@@ -243,9 +243,20 @@ task-panel {
 tailview {
     background-color: tailview-bg;
     text-color: text-secondary;
-    font-family: "Cascadia Code";
+    font-family: term-font;
     font-size: 12;
     padding: 16;
     line-spacing: 4;
     border-radius: 24;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   INTERACTIVE TERMINAL — PTY-based terminal emulator (alacritty)
+   ───────────────────────────────────────────────────────────────────────────── */
+terminal {
+    font-family: term-font;
+    font-size: 13;
+    scrollback-lines: 1000;
+    cursor-style: "block";
+    cursor-blink: true;
 }

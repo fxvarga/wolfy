@@ -26,6 +26,14 @@ pub mod tasks;
 #[cfg(windows)]
 pub mod task_runner;
 
+// PTY module for interactive terminal sessions (Windows only)
+#[cfg(windows)]
+pub mod pty;
+
+// Terminal emulator state wrapper (Windows only)
+#[cfg(windows)]
+pub mod terminal;
+
 // Widget base types (no Windows dependencies)
 pub mod widget {
     pub mod base;

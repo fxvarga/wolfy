@@ -9,6 +9,30 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 * {
+    /* ─── Terminal Font ─── */
+    term-font:              "Cascadia Code";
+
+    /* ─── Terminal ANSI Colors (Latte) ─── */
+    term-black:             #5c5f77;
+    term-red:               #d20f39;
+    term-green:             #40a02b;
+    term-yellow:            #df8e1d;
+    term-blue:              #1e66f5;
+    term-magenta:           #8839ef;
+    term-cyan:              #179299;
+    term-white:             #acb0be;
+    term-bright-black:      #6c6f85;
+    term-bright-red:        #d20f39;
+    term-bright-green:      #40a02b;
+    term-bright-yellow:     #df8e1d;
+    term-bright-blue:       #1e66f5;
+    term-bright-magenta:    #8839ef;
+    term-bright-cyan:       #179299;
+    term-bright-white:      #bcc0cc;
+    term-foreground:        #4c4f69;
+    term-background:        #eff1f5;
+    term-cursor:            #dc8a78;
+
     /* ─── Surface Colors (Light Mode) ─── */
     surface-deep:           #eff1f5;      /* Base - creamy white */
     surface-elevated:       #e6e9ef;      /* Surface0 */

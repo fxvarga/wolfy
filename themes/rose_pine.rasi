@@ -10,6 +10,30 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 * {
+    /* ─── Terminal Font ─── */
+    term-font:              "Cascadia Code";
+
+    /* ─── Terminal ANSI Colors (Rosé Pine Moon) ─── */
+    term-black:             #393552;
+    term-red:               #eb6f92;
+    term-green:             #3ebc5b;
+    term-yellow:            #f6c177;
+    term-blue:              #9ccfd8;
+    term-magenta:           #c4a7e7;
+    term-cyan:              #ea9a97;
+    term-white:             #e0def4;
+    term-bright-black:      #6e6a86;
+    term-bright-red:        #eb6f92;
+    term-bright-green:      #3ebc5b;
+    term-bright-yellow:     #f6c177;
+    term-bright-blue:       #9ccfd8;
+    term-bright-magenta:    #c4a7e7;
+    term-bright-cyan:       #ea9a97;
+    term-bright-white:      #e0def4;
+    term-foreground:        #e0def4;
+    term-background:        #232136;
+    term-cursor:            #ebbcba;
+
     /* ─── Surface Colors (Twilight) ─── */
     surface-deep:           #191724;      /* Base - deep purple */
     surface-elevated:       #1f1d2e;      /* Surface */

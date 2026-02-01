@@ -10,6 +10,30 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 * {
+    /* ─── Terminal Font ─── */
+    term-font:              "Cascadia Code";
+
+    /* ─── Terminal ANSI Colors (Cyberpunk Neon) ─── */
+    term-black:             #0a0a0a;
+    term-red:               #ff6b6b;
+    term-green:             #00ff9f;
+    term-yellow:            #fada16;
+    term-blue:              #00bfff;
+    term-magenta:           #ffa6c2;
+    term-cyan:              #00ffff;
+    term-white:             #e0e0e0;
+    term-bright-black:      #404040;
+    term-bright-red:        #ff8585;
+    term-bright-green:      #00ffb3;
+    term-bright-yellow:     #ffe14d;
+    term-bright-blue:       #4dd2ff;
+    term-bright-magenta:    #ffb8d0;
+    term-bright-cyan:       #4dffff;
+    term-bright-white:      #ffffff;
+    term-foreground:        #ffffff;
+    term-background:        #000000;
+    term-cursor:            #fada16;
+
     /* ─── Surface Colors (Pure Black) ─── */
     surface-deep:           #000000;      /* Absolute black */
     surface-elevated:       #0a0a0a;      /* Nearly black */

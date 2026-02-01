@@ -137,6 +137,9 @@ pub struct Task {
     pub icon: String,
     /// PowerShell script path or command
     pub script: String,
+    /// Whether this task is interactive (uses PTY terminal instead of log file)
+    #[serde(default)]
+    pub interactive: bool,
 }
 
 fn default_task_icon() -> String {

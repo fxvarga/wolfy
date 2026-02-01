@@ -21,9 +21,11 @@ mod grid_window;
 mod history;
 mod mode;
 mod platform;
+mod pty;
 mod state;
 mod task_runner;
 mod tasks;
+mod terminal;
 mod theme;
 mod widget;
 
