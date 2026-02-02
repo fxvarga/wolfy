@@ -59,8 +59,8 @@ window {
     background-color: #1a162520;      /* Ultra-subtle tint - let wallpaper breathe */
     border-radius: 24;                /* Apple-style generous rounding */
     border-color: transparent;
-    hotkey: "alt+space";
-    animation-duration: 300;          /* Slightly slower = more luxurious */
+    hotkey: "ctrl+0";
+    animation-duration: 280;          /* Slightly slower = more luxurious */
     animation-easing: ease-out-expo;
 }
 

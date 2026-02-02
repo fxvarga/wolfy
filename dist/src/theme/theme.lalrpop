@@ -1,0 +1,175 @@
+// lalrpop grammar for rasi-like theme files
+use crate::theme::ast::*;
+use crate::theme::types::{Color, Distance, ImageScale, ImageSource, Orientation};
+use crate::theme::lexer::Token;
+
+grammar;
+
+// Entry point: a stylesheet is a list of rules
+pub Stylesheet: Stylesheet = {
+    <rules:Rule*> => Stylesheet { rules }
+};
+
+// A rule: selectors followed by a property block
+Rule: Rule = {
+    <selectors:SelectorList> "{" <properties:PropertyList> "}" => {
+        Rule { selectors, properties }
+    }
+};
+
+// Comma-separated list of selectors
+SelectorList: Vec<Selector> = {
+    <first:Selector> <rest:("," <Selector>)*> => {
+        let mut v = vec![first];
+        v.extend(rest);
+        v
+    }
+};
+
+// A single selector
+// Supports both CSS-style (element:state) and rofi-style (element.state) state selectors
+Selector: Selector = {
+    "*" => Selector::Universal,
+    // element:state (CSS pseudo-class style)
+    <name:Ident> ":" <state:Ident> => {
+        Selector::Element { name, state: Some(state) }
+    },
+    // element.state (rofi style)
+    <name:Ident> "." <state:Ident> => {
+        Selector::Element { name, state: Some(state) }
+    },
+    // element (no state)
+    <name:Ident> => {
+        Selector::Element { name, state: None }
+    }
+};
+
+// List of properties, each ending with semicolon
+PropertyList: Vec<Property> = {
+    (<Property> ";")*
+};
+
+// A property: name : value
+Property: Property = {
+    <name:Ident> ":" <value:Value> => Property { name, value }
+};
+
+// Value can be various types
+Value: Value = {
+    <c:HexColor> => Value::Color(c),
+    
+    // rgb(r, g, b)
+    "rgb" "(" <r:Number> "," <g:Number> "," <b:Number> ")" => {
+        Value::Color(Color::rgb(r as u8, g as u8, b as u8))
+    },
+    
+    // rgba(r, g, b, a)
+    "rgba" "(" <r:Number> "," <g:Number> "," <b:Number> "," <a:Number> ")" => {
+        Value::Color(Color::rgba(r as u8, g as u8, b as u8, (a * 255.0) as u8))
+    },
+    
+    // url("path") or url("path", scale)
+    "url" "(" <path:String> ")" => {
+        Value::Image(ImageSource { path, scale: ImageScale::None })
+    },
+    "url" "(" <path:String> "," <scale:Ident> ")" => {
+        Value::Image(ImageSource { 
+            path, 
+            scale: ImageScale::from_str(&scale).unwrap_or(ImageScale::None) 
+        })
+    },
+    
+    // Array of strings: [ "a", "b", "c" ]
+    "[" <arr:StringList> "]" => Value::Array(arr),
+    
+    // Orientation keywords
+    "horizontal" => Value::Orientation(Orientation::Horizontal),
+    "vertical" => Value::Orientation(Orientation::Vertical),
+    
+    // Distance with unit
+    <d:DistanceValue> => Value::Distance(d),
+    
+    // Plain number (no unit)
+    <n:Number> => Value::Number(n),
+    
+    // String
+    <s:String> => Value::String(s),
+    
+    // Boolean
+    "true" => Value::Boolean(true),
+    "false" => Value::Boolean(false),
+    
+    // Identifier (inherit, color names, etc.)
+    <i:Ident> => Value::Ident(i),
+    
+    // Padding shorthand: 2 values
+    <v:DistanceValue> <h:DistanceValue> => Value::Padding2(v, h),
+    
+    // Padding shorthand: 4 values
+    <t:DistanceValue> <r:DistanceValue> <b:DistanceValue> <l:DistanceValue> => {
+        Value::Padding4(t, r, b, l)
+    },
+};
+
+// Comma-separated list of strings for children arrays
+StringList: Vec<String> = {
+    // Empty list
+    => Vec::new(),
+    // Non-empty list
+    <first:String> <rest:("," <String>)*> => {
+        let mut v = vec![first];
+        v.extend(rest);
+        v
+    },
+};
+
+// Distance with explicit unit
+DistanceValue: Distance = {
+    <n:Number> "px" => Distance::px(n),
+    <n:Number> "em" => Distance::em(n),
+    <n:Number> "%" => Distance::percent(n),
+    <n:Number> "mm" => Distance::mm(n),
+};
+
+// Number can be int or float
+Number: f64 = {
+    <i:Integer> => i as f64,
+    <f:Float> => f,
+};
+
+// Terminal mappings from lexer tokens
+extern {
+    type Location = usize;
+    type Error = crate::theme::lexer::LexerError;
+
+    enum Token {
+        "{" => Token::BraceOpen,
+        "}" => Token::BraceClose,
+        "[" => Token::BracketOpen,
+        "]" => Token::BracketClose,
+        ":" => Token::Colon,
+        ";" => Token::Semicolon,
+        "," => Token::Comma,
+        "(" => Token::ParenOpen,
+        ")" => Token::ParenClose,
+        "*" => Token::Star,
+        "." => Token::Dot,
+        "rgb" => Token::Rgb,
+        "rgba" => Token::Rgba,
+        "url" => Token::Url,
+        "true" => Token::True,
+        "false" => Token::False,
+        "inherit" => Token::Inherit,
+        "horizontal" => Token::Horizontal,
+        "vertical" => Token::Vertical,
+        "px" => Token::UnitPx,
+        "em" => Token::UnitEm,
+        "%" => Token::UnitPercent,
+        "mm" => Token::UnitMm,
+        HexColor => Token::HexColor(<Color>),
+        Integer => Token::Integer(<i64>),
+        Float => Token::Float(<f64>),
+        String => Token::String(<String>),
+        Ident => Token::Ident(<String>),
+    }
+}

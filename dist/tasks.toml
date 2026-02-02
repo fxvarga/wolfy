@@ -46,7 +46,7 @@ expanded = true
 [[groups.tasks]]
 name = "Copilot"
 icon = "\ue70c"
-script = "copilot"
+script = ""
 interactive = true
 
 [[groups.tasks]]

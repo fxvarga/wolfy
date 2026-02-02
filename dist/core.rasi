@@ -243,7 +243,7 @@ task-panel {
 tailview {
     background-color: tailview-bg;
     text-color: text-secondary;
-    font-family: "Cascadia Mono";
+    font-family: "JetBrainsMono Nerd Font";
     font-size: 12;
     padding: 16;
     line-spacing: 4;
@@ -254,7 +254,7 @@ tailview {
    INTERACTIVE TERMINAL — PTY-based terminal emulator (alacritty)
    ───────────────────────────────────────────────────────────────────────────── */
 terminal {
-    font-family: "Cascadia Mono";
+    font-family: "JetBrainsMono Nerd Font";
     font-size: 13;
     scrollback-lines: 1000;
     cursor-style: "block";

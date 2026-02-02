@@ -1,0 +1,82 @@
+use std::env;
+use std::fs;
+use std::path::Path;
+
+fn main() {
+    // Process LALRPOP grammar
+    lalrpop::process_root().unwrap();
+
+    // Copy theme files and tasks.toml to the output directory
+    let out_dir = env::var("OUT_DIR").unwrap();
+    // OUT_DIR is something like target/x86_64-pc-windows-gnu/release/build/wolfy-xxx/out
+    // We need to go up to the target profile directory (release or debug)
+    let out_path = Path::new(&out_dir);
+
+    // Navigate up: out -> wolfy-xxx -> build -> release -> target-triple -> target
+    // We want: target/x86_64-pc-windows-gnu/release/
+    if let Some(profile_dir) = out_path.ancestors().nth(3)
+    // up 3 levels from OUT_DIR
+    {
+        // List of theme files to copy
+        let theme_files = [
+            "default.rasi",          // Legacy/fallback
+            "core.rasi",             // New core styles (structure/layout)
+            "launcher.rasi",         // Launcher window theme
+            "theme_picker.rasi",     // Theme picker window theme
+            "wallpaper_picker.rasi", // Wallpaper picker window theme
+        ];
+
+        for file in &theme_files {
+            let src = Path::new(file);
+            let dst = profile_dir.join(file);
+
+            if src.exists() {
+                println!("cargo:rerun-if-changed={}", file);
+                if let Err(e) = fs::copy(src, &dst) {
+                    println!("cargo:warning=Failed to copy {}: {}", file, e);
+                } else {
+                    println!("cargo:warning=Copied {} to {:?}", file, dst);
+                }
+            }
+        }
+
+        // Copy themes directory
+        let themes_src = Path::new("themes");
+        let themes_dst = profile_dir.join("themes");
+        if themes_src.exists() {
+            if let Err(e) = fs::create_dir_all(&themes_dst) {
+                println!("cargo:warning=Failed to create themes dir: {}", e);
+            } else {
+                // Copy all .rasi files from themes/
+                if let Ok(entries) = fs::read_dir(themes_src) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map(|e| e == "rasi").unwrap_or(false) {
+                            let filename = path.file_name().unwrap();
+                            let dst = themes_dst.join(filename);
+                            println!("cargo:rerun-if-changed={}", path.display());
+                            if let Err(e) = fs::copy(&path, &dst) {
+                                println!("cargo:warning=Failed to copy {:?}: {}", filename, e);
+                            } else {
+                                println!("cargo:warning=Copied {:?} to {:?}", filename, dst);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Copy tasks.toml
+        let src = Path::new("tasks.toml");
+        let dst = profile_dir.join("tasks.toml");
+
+        if src.exists() {
+            println!("cargo:rerun-if-changed=tasks.toml");
+            if let Err(e) = fs::copy(src, &dst) {
+                println!("cargo:warning=Failed to copy tasks.toml: {}", e);
+            } else {
+                println!("cargo:warning=Copied tasks.toml to {:?}", dst);
+            }
+        }
+    }
+}
