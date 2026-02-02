@@ -50,6 +50,8 @@ pub struct RunningTask {
 pub struct TaskRunner {
     /// Running/completed tasks, keyed by "group:name"
     tasks: HashMap<String, RunningTask>,
+    /// Active interactive terminals, keyed by "group:name"
+    interactive_terminals: HashMap<String, Terminal>,
     /// Directory for output files
     output_dir: PathBuf,
 }
@@ -67,6 +69,7 @@ impl TaskRunner {
 
         Self {
             tasks: HashMap::new(),
+            interactive_terminals: HashMap::new(),
             output_dir,
         }
     }
@@ -165,10 +168,40 @@ impl TaskRunner {
         Ok(())
     }
 
+    /// Check if an interactive terminal exists for a task
+    pub fn has_interactive_terminal(&self, group: &str, name: &str) -> bool {
+        let key = Self::task_key(group, name);
+        self.interactive_terminals.contains_key(&key)
+    }
+
+    /// Take an existing interactive terminal (removes it from storage)
+    /// Returns None if no terminal exists for this task
+    pub fn take_interactive_terminal(&mut self, group: &str, name: &str) -> Option<Terminal> {
+        let key = Self::task_key(group, name);
+        log!("Taking interactive terminal for: {}", key);
+        self.interactive_terminals.remove(&key)
+    }
+
+    /// Store an interactive terminal for later retrieval
+    pub fn store_interactive_terminal(&mut self, group: &str, name: &str, terminal: Terminal) {
+        let key = Self::task_key(group, name);
+        log!("Storing interactive terminal for: {}", key);
+        self.interactive_terminals.insert(key, terminal);
+    }
+
+    /// Kill an interactive terminal session
+    pub fn kill_interactive_terminal(&mut self, group: &str, name: &str) {
+        let key = Self::task_key(group, name);
+        log!("Killing interactive terminal: {}", key);
+        self.interactive_terminals.remove(&key);
+        self.tasks.remove(&key);
+    }
+
     /// Start an interactive task using PTY
     ///
     /// Returns a Terminal that can be used for rendering and input.
-    /// The task will not be tracked in the task runner for output file handling.
+    /// If a terminal already exists for this task, returns an error -
+    /// use take_interactive_terminal() to get the existing one.
     pub fn start_interactive_task(
         &mut self,
         group: &str,
@@ -179,7 +212,12 @@ impl TaskRunner {
         let key = Self::task_key(group, name);
         log!("Starting interactive task: {} ({})", key, script);
 
-        // Kill any existing task with this key (interactive tasks start fresh each time)
+        // Check if we already have an interactive terminal for this task
+        if self.interactive_terminals.contains_key(&key) {
+            return Err(format!("Interactive terminal already exists for {}", key));
+        }
+
+        // Kill any existing non-interactive task with this key
         if self.is_running(group, name) {
             log!("Killing existing task {} before starting interactive", key);
             self.kill_task(group, name);

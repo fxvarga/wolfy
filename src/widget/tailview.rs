@@ -234,6 +234,12 @@ impl TailView {
         self.terminal.as_mut()
     }
 
+    /// Take the terminal out of the TailView without destroying it
+    /// Returns the terminal if we're in interactive mode, None otherwise
+    pub fn take_terminal(&mut self) -> Option<Terminal> {
+        self.terminal.take()
+    }
+
     /// Stop tailing and clear buffer
     pub fn stop_tail(&mut self) {
         self.mode = TailViewMode::LogFile;

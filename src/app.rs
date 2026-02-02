@@ -2229,8 +2229,23 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         };
 
         if interactive {
-            // Interactive mode: spawn PTY and use terminal emulation
-            log!("Task {} is interactive, spawning PTY", task_key);
+            // Interactive mode: check for existing terminal first
+            log!("Task {} is interactive", task_key);
+
+            // Check if we already have an interactive terminal for this task
+            if self.task_runner.has_interactive_terminal(group, name) {
+                log!("Reusing existing interactive terminal for {}", task_key);
+                if let Some(terminal) = self.task_runner.take_interactive_terminal(group, name) {
+                    self.tailview.start_interactive(task_key, terminal);
+                    self.current_mode = Mode::TailView;
+                    self.start_tail_refresh_timer();
+                    invalidate_window(self.hwnd);
+                    return;
+                }
+            }
+
+            // No existing terminal, spawn a new one
+            log!("Spawning new PTY for {}", task_key);
 
             // Get the script for the task
             let script = if let Some(config_path) = find_tasks_config() {
@@ -2283,6 +2298,23 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
     /// Exit tail view mode and return to launcher
     fn exit_tail_view(&mut self) {
         log!("Exiting tail view, returning to launcher");
+
+        // If we're in interactive mode, store the terminal for later reuse
+        if self.tailview.is_interactive() {
+            if let Some(task_key) = self.tailview.task_key().map(|s| s.to_string()) {
+                let parts: Vec<&str> = task_key.split(':').collect();
+                if parts.len() == 2 {
+                    let group = parts[0];
+                    let name = parts[1];
+
+                    // Take the terminal and store it in task_runner
+                    if let Some(terminal) = self.tailview.take_terminal() {
+                        log!("Storing interactive terminal for {}:{} for later reuse", group, name);
+                        self.task_runner.store_interactive_terminal(group, name, terminal);
+                    }
+                }
+            }
+        }
 
         self.tailview.stop_tail();
         self.stop_tail_refresh_timer();
@@ -2341,6 +2373,9 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
                     }
                 };
 
+                // Kill stored interactive terminal if any
+                self.task_runner.kill_interactive_terminal(&group, &name);
+
                 // Kill if running
                 if self.task_runner.is_running(&group, &name) {
                     self.task_runner.kill_task(&group, &name);
@@ -2364,7 +2399,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         }
     }
 
-    /// Kill the current task being viewed in tailview
+    /// Kill the current task being viewed in tailview and return to launcher
     fn kill_current_task(&mut self) {
         if let Some(task_key) = self.tailview.task_key().map(|s| s.to_string()) {
             let parts: Vec<&str> = task_key.split(':').collect();
@@ -2372,7 +2407,10 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
                 let group = parts[0].to_string();
                 let name = parts[1].to_string();
 
-                log!("Killing task: {}", task_key);
+                log!("Killing task and returning to launcher: {}", task_key);
+
+                // Kill stored interactive terminal if any
+                self.task_runner.kill_interactive_terminal(&group, &name);
 
                 // Kill if running
                 if self.task_runner.is_running(&group, &name) {
@@ -2382,6 +2420,10 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
                     log!("Task not running: {}", task_key);
                 }
 
+                // Exit tail view and return to launcher
+                self.tailview.stop_tail();
+                self.stop_tail_refresh_timer();
+                self.current_mode = Mode::Launcher;
                 invalidate_window(self.hwnd);
             }
         }
