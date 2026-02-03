@@ -91,7 +91,8 @@ pub mod history;
 // Working directory history for interactive tasks
 pub mod cwd_history;
 
-// PR Reviews tracking for notification widget
+// PR Reviews tracking for notification widget (optional extension)
+#[cfg(feature = "pr-reviews")]
 pub mod pr_reviews;
 
 // Task runner configuration (legacy - replaced by domain::entities::task)

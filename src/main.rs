@@ -22,6 +22,7 @@ mod grid_window;
 mod history;
 mod mode;
 mod platform;
+#[cfg(feature = "pr-reviews")]
 mod pr_reviews;
 mod pty;
 mod state;

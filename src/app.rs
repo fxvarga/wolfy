@@ -18,6 +18,7 @@ use crate::platform::win32::{
     reposition_window, resize_window, set_wallpaper, translate_message, Event, ImageLoader,
     MouseButton, PollingFileWatcher, Renderer, WindowConfig,
 };
+#[cfg(feature = "pr-reviews")]
 use crate::pr_reviews::{PrReview, PrReviews};
 use crate::task_runner::{TaskRunner, TaskStatus};
 use crate::tasks::{find_tasks_config, load_tasks_config, TaskItemState, TaskPanelPosition};
@@ -25,10 +26,11 @@ use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageScale, LayoutContext, Rect};
 use crate::widget::{
     ClockConfig, ClockPosition, CornerRadii, ElementData, ElementStyle, EventResult, GridItem,
-    GridView, GridViewStyle, ListView, ListViewStyle, MarkdownView, MarkdownViewHit,
-    MarkdownViewStyle, TailView, TailViewHit, TailViewStyle, TaskPanelState, TaskPanelStyle,
-    Textbox, Widget, WidgetState, WidgetStyle,
+    GridView, GridViewStyle, ListView, ListViewStyle, TailView, TailViewHit, TailViewStyle,
+    TaskPanelState, TaskPanelStyle, Textbox, Widget, WidgetState, WidgetStyle,
 };
+#[cfg(feature = "pr-reviews")]
+use crate::widget::{MarkdownView, MarkdownViewHit, MarkdownViewStyle};
 
 /// Cursor blink timer ID
 const TIMER_CURSOR_BLINK: usize = 1;
@@ -911,10 +913,13 @@ pub struct App {
     /// Working directory history for interactive tasks
     cwd_history: CwdHistory,
     /// PR Reviews tracker for notification widget
+    #[cfg(feature = "pr-reviews")]
     pr_reviews: PrReviews,
     /// Markdown view widget for PR reviews
+    #[cfg(feature = "pr-reviews")]
     markdown_view: MarkdownView,
     /// Whether we're currently viewing markdown
+    #[cfg(feature = "pr-reviews")]
     viewing_markdown: bool,
 }
 
@@ -1095,7 +1100,9 @@ impl App {
         let cwd_history = CwdHistory::load_default();
 
         // Initialize PR reviews tracker
+        #[cfg(feature = "pr-reviews")]
         let pr_reviews = PrReviews::new_default();
+        #[cfg(feature = "pr-reviews")]
         let markdown_view = MarkdownView::new();
 
         log!("App::new() completed successfully");
@@ -1123,8 +1130,11 @@ impl App {
             task_runner,
             tailview,
             cwd_history,
+            #[cfg(feature = "pr-reviews")]
             pr_reviews,
+            #[cfg(feature = "pr-reviews")]
             markdown_view,
+            #[cfg(feature = "pr-reviews")]
             viewing_markdown: false,
         })
     }
@@ -1344,6 +1354,7 @@ impl App {
         use crate::platform::win32::event::KeyCode;
 
         // Markdown view mode - handle navigation and exit
+        #[cfg(feature = "pr-reviews")]
         if self.viewing_markdown {
             match event {
                 Event::KeyDown { key, .. } => {
@@ -1889,6 +1900,7 @@ impl App {
                             .map(|state| state.group_index == usize::MAX)
                             .unwrap_or(false);
 
+                        #[cfg(feature = "pr-reviews")]
                         if is_notification {
                             // Open markdown view for PR reviews
                             self.enter_markdown_view();
@@ -1900,6 +1912,9 @@ impl App {
                                 cancel: false,
                             };
                         }
+
+                        #[cfg(not(feature = "pr-reviews"))]
+                        let _ = is_notification; // Suppress unused warning
 
                         // Activate selected task panel item
                         // First, extract the task info to avoid borrow conflicts
@@ -2101,6 +2116,7 @@ impl App {
         // Check if click is in task panel
         if let Some(ref mut task_panel) = self.task_panel {
             // Check notification icon first
+            #[cfg(feature = "pr-reviews")]
             if let Some(notif_bounds) = task_panel.notification_bounds {
                 if notif_bounds.contains(x, y) && self.pr_reviews.has_reviews() {
                     // Enter markdown view mode
@@ -2512,6 +2528,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
     }
 
     /// Enter markdown view mode for PR reviews
+    #[cfg(feature = "pr-reviews")]
     fn enter_markdown_view(&mut self) {
         log!("Entering markdown view for PR reviews");
 
@@ -2541,6 +2558,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
     }
 
     /// Exit markdown view mode
+    #[cfg(feature = "pr-reviews")]
     fn exit_markdown_view(&mut self) {
         log!("Exiting markdown view");
         self.viewing_markdown = false;
@@ -2549,6 +2567,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
     }
 
     /// Navigate to previous/next PR review
+    #[cfg(feature = "pr-reviews")]
     fn navigate_markdown(&mut self, direction: i32) {
         let current = self.markdown_view.current_index();
         let new_index = if direction < 0 {
@@ -3126,6 +3145,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         let content_height = height as f32 - mainbox_padding * 2.0;
 
         // In markdown view mode, render the markdown viewer
+        #[cfg(feature = "pr-reviews")]
         if self.viewing_markdown {
             let md_rect = Rect::new(content_x, content_y, content_width, content_height);
             let _ = self.markdown_view.render(&mut self.renderer, md_rect, &self.layout_ctx);
@@ -3816,6 +3836,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
             }
 
             // Render notification icon in compact mode if there are PR reviews
+            #[cfg(feature = "pr-reviews")]
             if self.pr_reviews.has_reviews() {
                 let notification_count = self.pr_reviews.unread_count();
                 task_panel.notification_count = notification_count;
@@ -3907,7 +3928,13 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
                     ),
                     is_group_header: false,
                 });
-            } else {
+            }
+            #[cfg(feature = "pr-reviews")]
+            if !self.pr_reviews.has_reviews() {
+                task_panel.notification_bounds = None;
+            }
+            #[cfg(not(feature = "pr-reviews"))]
+            {
                 task_panel.notification_bounds = None;
             }
 
@@ -4177,6 +4204,7 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         }
 
         // Render notification icon if there are PR reviews
+        #[cfg(feature = "pr-reviews")]
         if self.pr_reviews.has_reviews() {
             let notification_count = self.pr_reviews.unread_count();
             task_panel.notification_count = notification_count;
@@ -4299,7 +4327,13 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
                 ),
                 is_group_header: false,
             });
-        } else {
+        }
+        #[cfg(feature = "pr-reviews")]
+        if !self.pr_reviews.has_reviews() {
+            task_panel.notification_bounds = None;
+        }
+        #[cfg(not(feature = "pr-reviews"))]
+        {
             task_panel.notification_bounds = None;
         }
 
@@ -4740,9 +4774,12 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         self.is_visible = true;
 
         // Refresh PR reviews on window show
-        self.pr_reviews.refresh();
-        if let Some(ref mut task_panel) = self.task_panel {
-            task_panel.notification_count = self.pr_reviews.unread_count();
+        #[cfg(feature = "pr-reviews")]
+        {
+            self.pr_reviews.refresh();
+            if let Some(ref mut task_panel) = self.task_panel {
+                task_panel.notification_count = self.pr_reviews.unread_count();
+            }
         }
 
         // Resize window based on mode (this also updates renderer buffers)

@@ -1,0 +1,25 @@
+# Wolfy Extensions Configuration
+#
+# Copy this file to one of:
+#   %APPDATA%/wolfy/extensions.toml
+#   <exe_dir>/extensions.toml
+#   ./extensions.toml (current directory)
+#
+# The first found file will be used.
+
+# =============================================================================
+# PR REVIEWS EXTENSION
+# =============================================================================
+# Tracks PR review markdown files and shows notification badge in task panel.
+# Files are scanned matching pattern: PR-{number}-{date}.md
+#
+# Requires: pr-reviews feature (enabled by default)
+# Build without: cargo build --no-default-features
+
+[pr_reviews]
+# Whether the extension is enabled
+enabled = true
+
+# Directory containing PR review markdown files
+# If not specified, uses the built-in default path
+# reviews_dir = "C:\\path\\to\\your\\pr-reports"

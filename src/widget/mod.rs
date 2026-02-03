@@ -14,6 +14,7 @@ pub mod element;
 pub mod factory;
 pub mod gridview;
 pub mod listview;
+#[cfg(feature = "pr-reviews")]
 pub mod markdown_view;
 pub mod panel;
 pub mod tailview;
@@ -32,6 +33,7 @@ pub use element::{Element, ElementData, ElementStyle};
 pub use factory::{UITree, WidgetFactory, WidgetNode, WidgetType};
 pub use gridview::{GridItem, GridLayout, GridView, GridViewStyle, SelectionStyle};
 pub use listview::{ListView, ListViewStyle};
+#[cfg(feature = "pr-reviews")]
 pub use markdown_view::{MarkdownView, MarkdownViewHit, MarkdownViewStyle};
 pub use panel::{Panel, PanelStyle};
 pub use tailview::{TailView, TailViewHit, TailViewStyle};

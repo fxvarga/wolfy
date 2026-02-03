@@ -5,6 +5,10 @@ edition = "2021"
 description = "A Windows application launcher inspired by rofi"
 authors = ["Wolfy Contributors"]
 
+[features]
+default = ["pr-reviews"]
+pr-reviews = ["dep:pulldown-cmark"]
+
 [dependencies]
 logos = "0.14"
 lalrpop-util = { version = "0.20", features = ["lexer"] }
@@ -15,8 +19,8 @@ toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Markdown rendering
-pulldown-cmark = "0.9"
+# Markdown rendering (optional - for PR reviews extension)
+pulldown-cmark = { version = "0.9", optional = true }
 
 # Terminal emulation
 alacritty_terminal = "0.25"

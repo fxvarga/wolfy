@@ -2,6 +2,13 @@
 //!
 //! Tracks PR review markdown files and their viewed state.
 //! Files are scanned from a configured directory matching pattern: PR-{number}-{date}.md
+//!
+//! Configuration is loaded from extensions.toml:
+//! ```toml
+//! [pr_reviews]
+//! enabled = true
+//! reviews_dir = "C:\\path\\to\\reviews"
+//! ```
 
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -9,9 +16,84 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+// ============================================================================
+// EXTENSION CONFIGURATION (loaded from extensions.toml)
+// ============================================================================
+
+/// Extensions configuration loaded from extensions.toml
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct ExtensionsConfig {
+    /// PR Reviews extension configuration
+    #[serde(default)]
+    pub pr_reviews: PrReviewsExtConfig,
+}
+
+/// PR Reviews extension configuration from extensions.toml
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PrReviewsExtConfig {
+    /// Whether the extension is enabled
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Directory containing PR review markdown files
+    #[serde(default)]
+    pub reviews_dir: Option<PathBuf>,
+}
+
+impl Default for PrReviewsExtConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            reviews_dir: None,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl ExtensionsConfig {
+    /// Find extensions.toml in standard locations
+    fn find_config_path() -> Option<PathBuf> {
+        let candidates = [
+            dirs::config_dir().map(|p| p.join("wolfy").join("extensions.toml")),
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("extensions.toml"))),
+            Some(PathBuf::from("extensions.toml")),
+        ];
+
+        for candidate in candidates.into_iter().flatten() {
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    /// Load configuration from file, returning defaults if not found
+    fn load() -> Self {
+        if let Some(path) = Self::find_config_path() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(config) = toml::from_str(&content) {
+                    return config;
+                }
+            }
+        }
+        Self::default()
+    }
+}
+
+// ============================================================================
+// PR REVIEWS CONFIGURATION
+// ============================================================================
+
 /// Configuration for PR reviews
 #[derive(Debug, Clone)]
 pub struct PrReviewsConfig {
+    /// Whether PR reviews feature is enabled
+    pub enabled: bool,
     /// Directory containing PR review markdown files
     pub reviews_dir: PathBuf,
 }
@@ -19,7 +101,20 @@ pub struct PrReviewsConfig {
 impl Default for PrReviewsConfig {
     fn default() -> Self {
         Self {
+            enabled: true,
             reviews_dir: PathBuf::from(r"C:\Users\fevargas\Source\MSFT\PRReviewer\pr-reports"),
+        }
+    }
+}
+
+impl PrReviewsConfig {
+    /// Load configuration from extensions.toml, falling back to defaults
+    pub fn load() -> Self {
+        let ext_config = ExtensionsConfig::load();
+        let default = Self::default();
+        Self {
+            enabled: ext_config.pr_reviews.enabled,
+            reviews_dir: ext_config.pr_reviews.reviews_dir.unwrap_or(default.reviews_dir),
         }
     }
 }
@@ -117,9 +212,14 @@ impl PrReviews {
         manager
     }
 
-    /// Create with default configuration
+    /// Create with configuration loaded from extensions.toml
     pub fn new_default() -> Self {
-        Self::new(PrReviewsConfig::default())
+        Self::new(PrReviewsConfig::load())
+    }
+
+    /// Check if the PR reviews extension is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.config.enabled
     }
 
     /// Refresh the list of today's reviews
