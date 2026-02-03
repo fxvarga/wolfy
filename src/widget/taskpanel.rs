@@ -28,6 +28,10 @@ pub struct TaskPanelState {
     pub panel_bounds: Rect,
     /// Pending selection: group index to select first task from after next render
     pub pending_select_first_task_in_group: Option<usize>,
+    /// Notification badge count (PR reviews, etc.)
+    pub notification_count: usize,
+    /// Notification icon bounds for hit testing
+    pub notification_bounds: Option<Rect>,
 }
 
 impl TaskPanelState {
@@ -46,6 +50,8 @@ impl TaskPanelState {
             item_states: Vec::new(),
             panel_bounds: Rect::default(),
             pending_select_first_task_in_group: None,
+            notification_count: 0,
+            notification_bounds: None,
         }
     }
 

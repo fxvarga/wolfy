@@ -17,6 +17,11 @@ icon = "\uf233"
 script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\pfl\\backend\\core_automation_services\\local-runner\\Start-Backend.ps1' -Direct"
 
 [[groups.tasks]]
+name = "Run Functions"
+icon = "\uf0e7"
+script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\pfl\\backend\\core_automation_services\\local-runner\\Start-Functions.ps1' -Direct"
+
+[[groups.tasks]]
 name = "Run Frontend"
 icon = "\uf233"
 script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\pfl\\backend\\core_automation_services\\local-runner\\Start-Frontend.ps1' -Direct"
@@ -46,15 +51,11 @@ expanded = true
 [[groups.tasks]]
 name = "Copilot"
 icon = "\ue70c"
-script = ""
+script = "copilot"
 interactive = true
 
 [[groups.tasks]]
-name = "DNS Lookup"
-icon = "\uf0ac"
-script = "Resolve-DnsName google.com"
-
-[[groups.tasks]]
-name = "Ping Test"
-icon = "\uf0e8"
-script = "Test-Connection -ComputerName google.com -Count 4"
+name = "Review PRs"
+icon = "\uf126"
+script = "& 'c:\\Users\\fevargas\\Source\\MSFT\\PRReviewer\\ReviewPRs.ps1'"
+interactive = true

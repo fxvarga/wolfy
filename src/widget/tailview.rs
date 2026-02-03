@@ -8,9 +8,9 @@
 //! Features a button bar on the left (compact icon style like task panel)
 //! with Back and Open Terminal buttons.
 
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
@@ -36,6 +36,8 @@ pub enum TailViewMode {
     LogFile,
     /// Interactive PTY terminal (for interactive tasks)
     Interactive,
+    /// Directory picker before launching interactive terminal
+    DirectoryPicker,
 }
 
 /// Result of hit testing the tail view
@@ -158,6 +160,24 @@ pub struct TailView {
     selected_button: usize,
     /// Last time we refreshed the file
     last_refresh: Instant,
+
+    // Directory picker state
+    /// List of directories for the picker
+    picker_dirs: Vec<String>,
+    /// Currently selected directory index in picker
+    picker_selected: usize,
+    /// Text input for new directory path
+    picker_input: String,
+    /// Whether the text input is focused (vs the list)
+    picker_input_focused: bool,
+    /// Cursor position in the text input
+    picker_cursor: usize,
+    /// Autocomplete matches for cycling
+    autocomplete_matches: Vec<String>,
+    /// Current index in autocomplete matches
+    autocomplete_index: usize,
+    /// The original input before autocomplete started
+    autocomplete_original: String,
 }
 
 impl TailView {
@@ -182,6 +202,14 @@ impl TailView {
             visible_lines: 0,
             selected_button: 0,
             last_refresh: Instant::now(),
+            picker_dirs: Vec::new(),
+            picker_selected: 0,
+            picker_input: String::new(),
+            picker_input_focused: true,
+            picker_cursor: 0,
+            autocomplete_matches: Vec::new(),
+            autocomplete_index: 0,
+            autocomplete_original: String::new(),
         }
     }
 
@@ -227,6 +255,40 @@ impl TailView {
         self.terminal = Some(terminal);
         self.scroll_offset = 0;
         self.auto_scroll = true;
+    }
+
+    /// Start directory picker mode
+    pub fn start_directory_picker(&mut self, task_key: String, directories: Vec<String>) {
+        crate::log!("TailView: Starting directory picker for {}", task_key);
+        self.mode = TailViewMode::DirectoryPicker;
+        self.task_key = Some(task_key);
+        self.log_path = None;
+        self.terminal = None;
+        self.lines.clear();
+        self.picker_dirs = directories;
+        self.picker_selected = 0;
+        // Pre-populate input with the first (most recent) directory
+        self.picker_input = self.picker_dirs.first().cloned().unwrap_or_default();
+        self.picker_cursor = self.picker_input.chars().count();
+        self.picker_input_focused = true;
+    }
+
+    /// Get the selected directory from the picker
+    pub fn get_selected_directory(&self) -> String {
+        if !self.picker_input.is_empty() {
+            self.picker_input.clone()
+        } else if let Some(dir) = self.picker_dirs.get(self.picker_selected) {
+            dir.clone()
+        } else {
+            dirs::home_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| "C:\\".to_string())
+        }
+    }
+
+    /// Check if in directory picker mode
+    pub fn is_directory_picker(&self) -> bool {
+        self.mode == TailViewMode::DirectoryPicker
     }
 
     /// Get mutable access to the terminal (for input handling)
@@ -374,6 +436,229 @@ impl TailView {
             3 => TailViewHit::KillButton,
             _ => TailViewHit::BackButton,
         }
+    }
+
+    // ========================================================================
+    // Directory Picker Methods
+    // ========================================================================
+
+    /// Handle key input for directory picker mode
+    /// Returns true if the key was handled
+    pub fn picker_handle_key(&mut self, key: KeyCode) -> bool {
+        if self.mode != TailViewMode::DirectoryPicker {
+            return false;
+        }
+
+        match key {
+            KeyCode::Up => {
+                if self.picker_input_focused {
+                    // Switch focus to list if there are items
+                    if !self.picker_dirs.is_empty() {
+                        self.picker_input_focused = false;
+                        self.picker_selected = 0;
+                    }
+                } else if self.picker_selected > 0 {
+                    self.picker_selected -= 1;
+                } else {
+                    // Wrap to input
+                    self.picker_input_focused = true;
+                }
+                true
+            }
+            KeyCode::Down => {
+                if self.picker_input_focused {
+                    // Switch focus to list if there are items
+                    if !self.picker_dirs.is_empty() {
+                        self.picker_input_focused = false;
+                        self.picker_selected = 0;
+                    }
+                } else if self.picker_selected + 1 < self.picker_dirs.len() {
+                    self.picker_selected += 1;
+                } else {
+                    // Wrap to input
+                    self.picker_input_focused = true;
+                }
+                true
+            }
+            KeyCode::Left => {
+                if self.picker_input_focused && self.picker_cursor > 0 {
+                    // Move cursor left by one character
+                    let chars: Vec<char> = self.picker_input.chars().collect();
+                    if self.picker_cursor > 0 {
+                        self.picker_cursor = self.picker_cursor.saturating_sub(1).min(chars.len());
+                    }
+                }
+                true
+            }
+            KeyCode::Right => {
+                if self.picker_input_focused {
+                    // Move cursor right by one character
+                    let char_count = self.picker_input.chars().count();
+                    if self.picker_cursor < char_count {
+                        self.picker_cursor += 1;
+                    }
+                }
+                true
+            }
+            KeyCode::Home => {
+                if self.picker_input_focused {
+                    self.picker_cursor = 0;
+                }
+                true
+            }
+            KeyCode::End => {
+                if self.picker_input_focused {
+                    self.picker_cursor = self.picker_input.chars().count();
+                }
+                true
+            }
+            KeyCode::Backspace => {
+                if self.picker_input_focused && self.picker_cursor > 0 {
+                    // Clear autocomplete state
+                    self.autocomplete_matches.clear();
+                    self.autocomplete_index = 0;
+
+                    // Remove character before cursor
+                    let mut chars: Vec<char> = self.picker_input.chars().collect();
+                    if self.picker_cursor > 0 && self.picker_cursor <= chars.len() {
+                        chars.remove(self.picker_cursor - 1);
+                        self.picker_input = chars.into_iter().collect();
+                        self.picker_cursor -= 1;
+                    }
+                }
+                true
+            }
+            KeyCode::Delete => {
+                if self.picker_input_focused {
+                    // Clear autocomplete state
+                    self.autocomplete_matches.clear();
+                    self.autocomplete_index = 0;
+
+                    // Remove character at cursor
+                    let mut chars: Vec<char> = self.picker_input.chars().collect();
+                    if self.picker_cursor < chars.len() {
+                        chars.remove(self.picker_cursor);
+                        self.picker_input = chars.into_iter().collect();
+                    }
+                }
+                true
+            }
+            KeyCode::Tab => {
+                if self.picker_input_focused && !self.picker_input.is_empty() {
+                    // If we already have matches from a previous Tab, cycle through them
+                    if !self.autocomplete_matches.is_empty() {
+                        self.autocomplete_index = (self.autocomplete_index + 1) % self.autocomplete_matches.len();
+                        self.picker_input = self.autocomplete_matches[self.autocomplete_index].clone();
+                        self.picker_cursor = self.picker_input.chars().count();
+                    } else {
+                        // First Tab press - get matches
+                        self.get_autocomplete_matches();
+                        if !self.autocomplete_matches.is_empty() {
+                            self.autocomplete_index = 0;
+                            self.picker_input = self.autocomplete_matches[0].clone();
+                            self.picker_cursor = self.picker_input.chars().count();
+                        }
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Handle character input for directory picker
+    pub fn picker_handle_char(&mut self, c: char) {
+        if self.mode != TailViewMode::DirectoryPicker || !self.picker_input_focused {
+            return;
+        }
+
+        // Clear autocomplete state when user types
+        self.autocomplete_matches.clear();
+        self.autocomplete_index = 0;
+
+        // Insert character at cursor position (character-based)
+        let mut chars: Vec<char> = self.picker_input.chars().collect();
+        let insert_pos = self.picker_cursor.min(chars.len());
+        chars.insert(insert_pos, c);
+        self.picker_input = chars.into_iter().collect();
+        self.picker_cursor = insert_pos + 1;
+    }
+
+    /// Select a directory from the list (puts it in the input box)
+    pub fn picker_select_from_list(&mut self) {
+        if !self.picker_input_focused && self.picker_selected < self.picker_dirs.len() {
+            self.picker_input = self.picker_dirs[self.picker_selected].clone();
+            self.picker_cursor = self.picker_input.chars().count();
+            self.picker_input_focused = true;
+        }
+    }
+
+    /// Get autocomplete matches and populate the matches list for Tab cycling
+    fn get_autocomplete_matches(&mut self) {
+        self.autocomplete_matches.clear();
+        self.autocomplete_original = self.picker_input.clone();
+
+        let input = self.picker_input.trim(); // Trim any whitespace
+        if input.is_empty() {
+            return;
+        }
+
+        let path = Path::new(input);
+
+        // Determine parent directory and prefix to match
+        let (parent, prefix) = if input.ends_with('\\') || input.ends_with('/') {
+            // Input ends with separator - list contents of that directory
+            (path.to_path_buf(), String::new())
+        } else if path.is_dir() {
+            // Input is an existing directory without trailing slash - list its contents
+            (path.to_path_buf(), String::new())
+        } else {
+            // Get parent directory and the partial name we're trying to complete
+            let parent = path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+            let prefix = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            (parent, prefix)
+        };
+
+        // Read the parent directory
+        let entries = match fs::read_dir(&parent) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+
+        // Collect matching directories
+        let mut matches: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                // Only directories
+                e.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+            })
+            .filter(|e| {
+                // Matches our prefix (case-insensitive)
+                if prefix.is_empty() {
+                    true
+                } else {
+                    e.file_name()
+                        .to_str()
+                        .map(|name| name.to_lowercase().starts_with(&prefix))
+                        .unwrap_or(false)
+                }
+            })
+            .map(|e| {
+                let mut path_str = e.path().to_string_lossy().to_string();
+                if !path_str.ends_with('\\') {
+                    path_str.push('\\');
+                }
+                path_str
+            })
+            .collect();
+
+        // Sort alphabetically
+        matches.sort();
+
+        self.autocomplete_matches = matches;
     }
 
     /// Send a character to the terminal (interactive mode only)
@@ -774,6 +1059,18 @@ impl TailView {
                     rect,
                 )?;
             }
+            TailViewMode::DirectoryPicker => {
+                self.render_directory_picker(
+                    renderer,
+                    content_x,
+                    content_y,
+                    content_width,
+                    content_height,
+                    font_size,
+                    line_spacing,
+                    scale,
+                )?;
+            }
         }
 
         Ok(())
@@ -1000,6 +1297,153 @@ impl TailView {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    /// Render directory picker content
+    fn render_directory_picker(
+        &self,
+        renderer: &mut Renderer,
+        content_x: f32,
+        content_y: f32,
+        content_width: f32,
+        _content_height: f32,
+        font_size: f32,
+        line_spacing: f32,
+        scale: f32,
+    ) -> Result<(), windows::core::Error> {
+        let padding = 8.0 * scale;
+        let line_height = font_size + line_spacing;
+        let input_height = font_size + padding * 2.0;
+        let corner_radius = 4.0 * scale;
+
+        // Colors
+        let input_bg = Color::from_hex("#2a273f").unwrap_or(Color::BLACK);
+        let input_border = Color::from_hex("#03edf9").unwrap_or(Color::WHITE);
+        let input_border_unfocused = Color::from_hex("#444444").unwrap_or(Color::from_f32(0.5, 0.5, 0.5, 1.0));
+        let list_item_bg = Color::from_hex("#1e1b2e").unwrap_or(Color::BLACK);
+        let list_item_selected_bg = Color::from_hex("#03edf930").unwrap_or(Color::from_f32(0.5, 0.5, 0.5, 0.3));
+        let text_color = self.style.text_color;
+        let placeholder_color = Color::from_f32(text_color.r, text_color.g, text_color.b, 0.5);
+
+        // Create text format
+        let text_format = renderer.create_text_format(&self.style.font_family, font_size, false, false)
+            .map_err(|_| windows::core::Error::from_win32())?;
+
+        // === Title ===
+        let title = "Select Working Directory";
+        let title_rect = D2D_RECT_F {
+            left: content_x,
+            top: content_y,
+            right: content_x + content_width,
+            bottom: content_y + line_height,
+        };
+        renderer.draw_text(title, &text_format, title_rect, text_color)?;
+
+        // === Input Box ===
+        let input_y = content_y + line_height + padding;
+        let input_rect = D2D_RECT_F {
+            left: content_x,
+            top: input_y,
+            right: content_x + content_width,
+            bottom: input_y + input_height,
+        };
+
+        // Input background
+        renderer.fill_rounded_rect(input_rect, corner_radius, corner_radius, input_bg)?;
+
+        // Input border (highlighted if focused)
+        let border_color = if self.picker_input_focused { input_border } else { input_border_unfocused };
+        renderer.draw_rounded_rect(input_rect, corner_radius, corner_radius, border_color, 1.5 * scale)?;
+
+        // Input text or placeholder
+        let text_x = content_x + padding;
+        let text_y = input_y + padding;
+        let text_rect = D2D_RECT_F {
+            left: text_x,
+            top: text_y,
+            right: content_x + content_width - padding,
+            bottom: input_y + input_height - padding,
+        };
+
+        if self.picker_input.is_empty() {
+            renderer.draw_text("Type path or select below...", &text_format, text_rect, placeholder_color)?;
+
+            // Draw cursor at start if focused
+            if self.picker_input_focused {
+                let cursor_rect = D2D_RECT_F {
+                    left: text_x,
+                    top: text_y,
+                    right: text_x + 2.0 * scale,
+                    bottom: text_y + font_size,
+                };
+                renderer.fill_rect(cursor_rect, input_border)?;
+            }
+        } else {
+            renderer.draw_text(&self.picker_input, &text_format, text_rect, text_color)?;
+
+            // Draw cursor if focused
+            if self.picker_input_focused {
+                // Get the text before cursor (character-based)
+                let text_before_cursor: String = self.picker_input.chars().take(self.picker_cursor).collect();
+                // Use monospace character width approximation (0.6 of font size is common for monospace fonts)
+                let char_width = font_size * 0.6;
+                let cursor_offset = text_before_cursor.chars().count() as f32 * char_width;
+                let cursor_x = text_x + cursor_offset;
+                let cursor_rect = D2D_RECT_F {
+                    left: cursor_x,
+                    top: text_y,
+                    right: cursor_x + 2.0 * scale,
+                    bottom: text_y + font_size,
+                };
+                renderer.fill_rect(cursor_rect, input_border)?;
+            }
+        }
+
+        // === Directory List ===
+        let list_y = input_y + input_height + padding * 2.0;
+        let item_height = line_height + padding;
+
+        for (i, dir) in self.picker_dirs.iter().enumerate() {
+            let item_y = list_y + (i as f32) * item_height;
+            let item_rect = D2D_RECT_F {
+                left: content_x,
+                top: item_y,
+                right: content_x + content_width,
+                bottom: item_y + item_height,
+            };
+
+            // Background (selected highlight)
+            let is_selected = !self.picker_input_focused && i == self.picker_selected;
+            let bg_color = if is_selected { list_item_selected_bg } else { list_item_bg };
+            renderer.fill_rounded_rect(item_rect, corner_radius, corner_radius, bg_color)?;
+
+            // Selection border
+            if is_selected {
+                renderer.draw_rounded_rect(item_rect, corner_radius, corner_radius, input_border, 1.5 * scale)?;
+            }
+
+            // Directory text
+            let text_rect = D2D_RECT_F {
+                left: content_x + padding,
+                top: item_y + padding / 2.0,
+                right: content_x + content_width - padding,
+                bottom: item_y + item_height - padding / 2.0,
+            };
+            renderer.draw_text(dir, &text_format, text_rect, text_color)?;
+        }
+
+        // === Hint text at bottom ===
+        let hint_y = list_y + (self.picker_dirs.len() as f32) * item_height + padding * 2.0;
+        let hint_rect = D2D_RECT_F {
+            left: content_x,
+            top: hint_y,
+            right: content_x + content_width,
+            bottom: hint_y + line_height,
+        };
+        let hint_text = "Enter: Launch  |  ↑↓: Navigate  |  Esc: Back";
+        renderer.draw_text(hint_text, &text_format, hint_rect, placeholder_color)?;
 
         Ok(())
     }

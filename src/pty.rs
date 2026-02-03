@@ -43,15 +43,26 @@ impl Pty {
 
     /// Spawn a new PTY with a specific command
     pub fn spawn_command(command: &str, cols: u16, rows: u16) -> Result<Self, String> {
+        Self::spawn_command_in_dir(command, cols, rows, None)
+    }
+
+    /// Spawn a new PTY with a specific command and working directory
+    pub fn spawn_command_in_dir(command: &str, cols: u16, rows: u16, cwd: Option<&str>) -> Result<Self, String> {
         log!(
-            "PTY: Spawning command '{}' with size {}x{}",
+            "PTY: Spawning command '{}' with size {}x{}, cwd={:?}",
             command,
             cols,
-            rows
+            rows,
+            cwd
         );
 
         // Create command
-        let cmd = Command::new(command);
+        let mut cmd = Command::new(command);
+
+        // Set working directory if provided
+        if let Some(dir) = cwd {
+            cmd.current_dir(dir);
+        }
 
         // Create the ConPTY process
         let mut process =

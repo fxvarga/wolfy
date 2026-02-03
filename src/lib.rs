@@ -88,6 +88,12 @@ pub mod animation;
 // Usage history tracking (legacy - replaced by adapters::gateways::file_history_gateway)
 pub mod history;
 
+// Working directory history for interactive tasks
+pub mod cwd_history;
+
+// PR Reviews tracking for notification widget
+pub mod pr_reviews;
+
 // Task runner configuration (legacy - replaced by domain::entities::task)
 pub mod tasks;
 

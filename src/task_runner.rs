@@ -208,9 +208,10 @@ impl TaskRunner {
         name: &str,
         script: &str,
         theme: Option<&ThemeTree>,
+        cwd: Option<&str>,
     ) -> Result<Terminal, String> {
         let key = Self::task_key(group, name);
-        log!("Starting interactive task: {} ({})", key, script);
+        log!("Starting interactive task: {} ({}) in {:?}", key, script, cwd);
 
         // Check if we already have an interactive terminal for this task
         if self.interactive_terminals.contains_key(&key) {
@@ -253,8 +254,8 @@ impl TaskRunner {
 
         log!("Interactive command: {}", command);
 
-        // Spawn PTY with the command
-        let pty = Pty::spawn_command(&command, config.cols, config.rows)
+        // Spawn PTY with the command and working directory
+        let pty = Pty::spawn_command_in_dir(&command, config.cols, config.rows, cwd)
             .map_err(|e| format!("Failed to spawn PTY: {:?}", e))?;
 
         // Create terminal and attach PTY

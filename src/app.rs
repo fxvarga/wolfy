@@ -9,6 +9,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::animation::{Easing, WindowAnimator};
+use crate::cwd_history::CwdHistory;
 use crate::history::History;
 use crate::log::{exe_dir, find_config_file};
 use crate::mode::Mode;
@@ -17,14 +18,16 @@ use crate::platform::win32::{
     reposition_window, resize_window, set_wallpaper, translate_message, Event, ImageLoader,
     MouseButton, PollingFileWatcher, Renderer, WindowConfig,
 };
+use crate::pr_reviews::{PrReview, PrReviews};
 use crate::task_runner::{TaskRunner, TaskStatus};
 use crate::tasks::{find_tasks_config, load_tasks_config, TaskItemState, TaskPanelPosition};
 use crate::theme::tree::ThemeTree;
 use crate::theme::types::{Color, ImageScale, LayoutContext, Rect};
 use crate::widget::{
     ClockConfig, ClockPosition, CornerRadii, ElementData, ElementStyle, EventResult, GridItem,
-    GridView, GridViewStyle, ListView, ListViewStyle, TailView, TailViewHit, TailViewStyle,
-    TaskPanelState, TaskPanelStyle, Textbox, Widget, WidgetState, WidgetStyle,
+    GridView, GridViewStyle, ListView, ListViewStyle, MarkdownView, MarkdownViewHit,
+    MarkdownViewStyle, TailView, TailViewHit, TailViewStyle, TaskPanelState, TaskPanelStyle,
+    Textbox, Widget, WidgetState, WidgetStyle,
 };
 
 /// Cursor blink timer ID
@@ -905,6 +908,14 @@ pub struct App {
     task_runner: TaskRunner,
     /// Tail view widget for showing task output
     tailview: TailView,
+    /// Working directory history for interactive tasks
+    cwd_history: CwdHistory,
+    /// PR Reviews tracker for notification widget
+    pr_reviews: PrReviews,
+    /// Markdown view widget for PR reviews
+    markdown_view: MarkdownView,
+    /// Whether we're currently viewing markdown
+    viewing_markdown: bool,
 }
 
 impl App {
@@ -1080,6 +1091,13 @@ impl App {
             tailview.set_button_style(task_panel_style.clone());
         }
 
+        // Initialize working directory history
+        let cwd_history = CwdHistory::load_default();
+
+        // Initialize PR reviews tracker
+        let pr_reviews = PrReviews::new_default();
+        let markdown_view = MarkdownView::new();
+
         log!("App::new() completed successfully");
         Ok(Self {
             hwnd,
@@ -1104,6 +1122,10 @@ impl App {
             current_theme: None,
             task_runner,
             tailview,
+            cwd_history,
+            pr_reviews,
+            markdown_view,
+            viewing_markdown: false,
         })
     }
 
@@ -1321,8 +1343,131 @@ impl App {
     fn handle_event(&mut self, event: &Event) -> EventResult {
         use crate::platform::win32::event::KeyCode;
 
+        // Markdown view mode - handle navigation and exit
+        if self.viewing_markdown {
+            match event {
+                Event::KeyDown { key, .. } => {
+                    match *key {
+                        KeyCode::Escape | KeyCode::Backspace => {
+                            self.exit_markdown_view();
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Left => {
+                            self.navigate_markdown(-1);
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Right => {
+                            self.navigate_markdown(1);
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Up | KeyCode::PageUp => {
+                            self.markdown_view.scroll(-50.0);
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Down | KeyCode::PageDown => {
+                            self.markdown_view.scroll(50.0);
+                            return EventResult::repaint();
+                        }
+                        KeyCode::Home => {
+                            self.markdown_view.scroll_to_top();
+                            return EventResult::repaint();
+                        }
+                        _ => {}
+                    }
+                }
+                Event::MouseDown { x, y, .. } => {
+                    match self.markdown_view.hit_test(*x as f32, *y as f32) {
+                        MarkdownViewHit::BackButton => {
+                            self.exit_markdown_view();
+                            return EventResult::repaint();
+                        }
+                        MarkdownViewHit::PrevButton => {
+                            self.navigate_markdown(-1);
+                            return EventResult::repaint();
+                        }
+                        MarkdownViewHit::NextButton => {
+                            self.navigate_markdown(1);
+                            return EventResult::repaint();
+                        }
+                        MarkdownViewHit::LinkButton => {
+                            if let Some(url) = self.markdown_view.pr_link() {
+                                let _ = std::process::Command::new("cmd")
+                                    .args(["/C", "start", "", url])
+                                    .spawn();
+                            }
+                            return EventResult::repaint();
+                        }
+                        _ => {}
+                    }
+                }
+                Event::MouseWheel { delta, .. } => {
+                    self.markdown_view.scroll(*delta as f32 * -0.5);
+                    return EventResult::repaint();
+                }
+                _ => {}
+            }
+            return EventResult::none();
+        }
+
         // In tail view mode, handle events for the tail view
         if self.current_mode.uses_tail_view() {
+            // Directory picker mode - handle navigation and selection
+            if self.tailview.is_directory_picker() {
+                match event {
+                    Event::Char(c) => {
+                        // Type into the input box
+                        self.tailview.picker_handle_char(*c);
+                        return EventResult::repaint();
+                    }
+                    Event::KeyDown { key, .. } => {
+                        match *key {
+                            KeyCode::Escape => {
+                                // Cancel and go back
+                                self.exit_tail_view();
+                                return EventResult::repaint();
+                            }
+                            KeyCode::Enter => {
+                                // Launch terminal with selected directory
+                                let selected_dir = self.tailview.get_selected_directory();
+                                if let Some(task_key) = self.tailview.task_key().map(|s| s.to_string()) {
+                                    let parts: Vec<&str> = task_key.split(':').collect();
+                                    if parts.len() == 2 {
+                                        let group = parts[0].to_string();
+                                        let name = parts[1].to_string();
+                                        self.launch_interactive_in_dir(&group, &name, &selected_dir);
+                                    }
+                                }
+                                return EventResult::repaint();
+                            }
+                            KeyCode::Tab => {
+                                // Tab: autocomplete if input focused, otherwise copy from list
+                                if self.tailview.picker_handle_key(*key) {
+                                    return EventResult::repaint();
+                                }
+                            }
+                            _ => {
+                                // Handle navigation keys
+                                if self.tailview.picker_handle_key(*key) {
+                                    return EventResult::repaint();
+                                }
+                            }
+                        }
+                    }
+                    Event::MouseDown { x, y, .. } => {
+                        // Check button clicks
+                        match self.tailview.hit_test(*x as f32, *y as f32) {
+                            TailViewHit::BackButton => {
+                                self.exit_tail_view();
+                                return EventResult::repaint();
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+                return EventResult::none();
+            }
+
             // Interactive terminal mode - forward most input to PTY
             if self.tailview.is_interactive() {
                 match event {
@@ -1735,6 +1880,27 @@ impl App {
                         .unwrap_or(false);
 
                     if task_panel_focused {
+                        // Check if notification item is selected (sentinel value usize::MAX)
+                        let is_notification = self
+                            .task_panel
+                            .as_ref()
+                            .and_then(|tp| tp.selected_item)
+                            .and_then(|idx| self.task_panel.as_ref()?.item_states.get(idx))
+                            .map(|state| state.group_index == usize::MAX)
+                            .unwrap_or(false);
+
+                        if is_notification {
+                            // Open markdown view for PR reviews
+                            self.enter_markdown_view();
+                            return EventResult {
+                                needs_repaint: true,
+                                consumed: true,
+                                text_changed: false,
+                                submit: false,
+                                cancel: false,
+                            };
+                        }
+
                         // Activate selected task panel item
                         // First, extract the task info to avoid borrow conflicts
                         let task_info: Option<(String, String, String, bool)> =
@@ -1934,6 +2100,15 @@ impl App {
 
         // Check if click is in task panel
         if let Some(ref mut task_panel) = self.task_panel {
+            // Check notification icon first
+            if let Some(notif_bounds) = task_panel.notification_bounds {
+                if notif_bounds.contains(x, y) && self.pr_reviews.has_reviews() {
+                    // Enter markdown view mode
+                    self.enter_markdown_view();
+                    return EventResult::repaint();
+                }
+            }
+
             if let Some(item_idx) = task_panel.hit_test(x, y) {
                 // Get item info before mutating
                 let item_state = task_panel.item_states.get(item_idx).cloned();
@@ -2244,45 +2419,12 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
                 }
             }
 
-            // No existing terminal, spawn a new one
-            log!("Spawning new PTY for {}", task_key);
-
-            // Get the script for the task
-            let script = if let Some(config_path) = find_tasks_config() {
-                let config = load_tasks_config(&config_path);
-                config.find_task(group, name)
-                    .map(|t| t.script.clone())
-                    .unwrap_or_default()
-            } else {
-                String::new()
-            };
-
-            // Load current theme for terminal colors
-            let theme = self.load_current_theme();
-
-            // Start interactive task with PTY
-            match self.task_runner.start_interactive_task(
-                group,
-                name,
-                &script,
-                theme.as_ref(),
-            ) {
-                Ok(terminal) => {
-                    self.tailview.start_interactive(task_key, terminal);
-                    self.current_mode = Mode::TailView;
-                    self.start_tail_refresh_timer();
-                    invalidate_window(self.hwnd);
-                }
-                Err(e) => {
-                    log!("Failed to start interactive task: {}", e);
-                    // Fall back to log file mode
-                    let output_file = self.task_runner.get_output_file(group, name);
-                    self.tailview.start_tail(task_key, output_file);
-                    self.current_mode = Mode::TailView;
-                    self.start_tail_refresh_timer();
-                    invalidate_window(self.hwnd);
-                }
-            }
+            // No existing terminal - show directory picker first
+            log!("Showing directory picker for {}", task_key);
+            let dirs = self.cwd_history.get_dirs_with_default(group, name);
+            self.tailview.start_directory_picker(task_key, dirs);
+            self.current_mode = Mode::TailView;
+            invalidate_window(self.hwnd);
         } else {
             // Log file mode: use file-based output
             let output_file = self.task_runner.get_output_file(group, name);
@@ -2292,6 +2434,53 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
             self.current_mode = Mode::TailView;
             self.start_tail_refresh_timer();
             invalidate_window(self.hwnd);
+        }
+    }
+
+    /// Launch interactive terminal in the selected directory
+    fn launch_interactive_in_dir(&mut self, group: &str, name: &str, cwd: &str) {
+        let task_key = format!("{}:{}", group, name);
+        log!("Launching interactive terminal for {} in {}", task_key, cwd);
+
+        // Add to history
+        self.cwd_history.add_dir(group, name, cwd);
+
+        // Get the script for the task
+        let script = if let Some(config_path) = find_tasks_config() {
+            let config = load_tasks_config(&config_path);
+            config.find_task(group, name)
+                .map(|t| t.script.clone())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        // Load current theme for terminal colors
+        let theme = self.load_current_theme();
+
+        // Start interactive task with PTY in the selected directory
+        match self.task_runner.start_interactive_task(
+            group,
+            name,
+            &script,
+            theme.as_ref(),
+            Some(cwd),
+        ) {
+            Ok(terminal) => {
+                self.tailview.start_interactive(task_key, terminal);
+                self.current_mode = Mode::TailView;
+                self.start_tail_refresh_timer();
+                invalidate_window(self.hwnd);
+            }
+            Err(e) => {
+                log!("Failed to start interactive task: {}", e);
+                // Fall back to log file mode
+                let output_file = self.task_runner.get_output_file(group, name);
+                self.tailview.start_tail(task_key, output_file);
+                self.current_mode = Mode::TailView;
+                self.start_tail_refresh_timer();
+                invalidate_window(self.hwnd);
+            }
         }
     }
 
@@ -2320,6 +2509,71 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         self.stop_tail_refresh_timer();
         self.current_mode = Mode::Launcher;
         invalidate_window(self.hwnd);
+    }
+
+    /// Enter markdown view mode for PR reviews
+    fn enter_markdown_view(&mut self) {
+        log!("Entering markdown view for PR reviews");
+
+        // Start with first unread, or first review
+        let start_index = self.pr_reviews.first_unread_index().unwrap_or(0);
+        let total = self.pr_reviews.total_count();
+
+        // Load the review content
+        if let Some(review) = self.pr_reviews.get_review(start_index) {
+            let review = review.clone();
+            if let Some(content) = self.pr_reviews.load_review_content(start_index) {
+                self.markdown_view.load_review(&review, content, start_index, total);
+            }
+        }
+
+        // Mark as viewed
+        self.pr_reviews.mark_viewed(start_index);
+
+        // Update notification count
+        if let Some(ref mut task_panel) = self.task_panel {
+            task_panel.notification_count = self.pr_reviews.unread_count();
+        }
+
+        self.viewing_markdown = true;
+        self.current_mode = Mode::TailView; // Reuse TailView mode for similar layout
+        invalidate_window(self.hwnd);
+    }
+
+    /// Exit markdown view mode
+    fn exit_markdown_view(&mut self) {
+        log!("Exiting markdown view");
+        self.viewing_markdown = false;
+        self.current_mode = Mode::Launcher;
+        invalidate_window(self.hwnd);
+    }
+
+    /// Navigate to previous/next PR review
+    fn navigate_markdown(&mut self, direction: i32) {
+        let current = self.markdown_view.current_index();
+        let new_index = if direction < 0 {
+            current.saturating_sub(1)
+        } else {
+            (current + 1).min(self.pr_reviews.total_count().saturating_sub(1))
+        };
+
+        if new_index != current {
+            let total = self.pr_reviews.total_count();
+            if let Some(review) = self.pr_reviews.get_review(new_index) {
+                let review = review.clone();
+                if let Some(content) = self.pr_reviews.load_review_content(new_index) {
+                    self.markdown_view.load_review(&review, content, new_index, total);
+                }
+            }
+            self.pr_reviews.mark_viewed(new_index);
+
+            // Update notification count
+            if let Some(ref mut task_panel) = self.task_panel {
+                task_panel.notification_count = self.pr_reviews.unread_count();
+            }
+
+            invalidate_window(self.hwnd);
+        }
     }
 
     /// Open external terminal for tail and close wolfy
@@ -2870,6 +3124,37 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         let content_y = mainbox_padding;
         let content_width = width as f32 - mainbox_padding * 2.0;
         let content_height = height as f32 - mainbox_padding * 2.0;
+
+        // In markdown view mode, render the markdown viewer
+        if self.viewing_markdown {
+            let md_rect = Rect::new(content_x, content_y, content_width, content_height);
+            let _ = self.markdown_view.render(&mut self.renderer, md_rect, &self.layout_ctx);
+
+            // Draw mainbox border
+            let mainbox_bounds = D2D_RECT_F {
+                left: mainbox_padding / 2.0,
+                top: mainbox_padding / 2.0,
+                right: width as f32 - mainbox_padding / 2.0,
+                bottom: height as f32 - mainbox_padding / 2.0,
+            };
+            let _ = self.renderer.draw_rounded_rect(
+                mainbox_bounds,
+                corner_radius,
+                corner_radius,
+                self.theme_layout.window_border_color,
+                border_width,
+            );
+
+            log!("  Calling end_draw() for markdown view...");
+            let opacity = self.animator.get_opacity();
+            let result = self.renderer.end_draw_with_opacity(opacity);
+            log!("  end_draw() result: {:?}, opacity: {}", result, opacity);
+
+            if let Err(e) = result {
+                log!("Markdown view end_draw error: {:?}", e);
+            }
+            return;
+        }
 
         // In tail view mode, render only the tail view and skip other widgets
         if self.current_mode.uses_tail_view() {
@@ -3530,6 +3815,102 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
                 y += row_height + group_spacing;
             }
 
+            // Render notification icon in compact mode if there are PR reviews
+            if self.pr_reviews.has_reviews() {
+                let notification_count = self.pr_reviews.unread_count();
+                task_panel.notification_count = notification_count;
+
+                let item_index = task_panel.item_states.len();
+                let is_hovered = hovered == Some(item_index);
+                let is_selected = is_focused && selected == Some(item_index);
+
+                // Draw notification icon row
+                let notif_row = D2D_RECT_F {
+                    left: panel_left + inner_padding,
+                    top: y,
+                    right: panel_left + panel_width_scaled - inner_padding,
+                    bottom: y + row_height,
+                };
+
+                // Background (highlighted if selected, hovered, or has unread)
+                let bg_color = if is_selected {
+                    style.selected_background_color
+                } else if is_hovered {
+                    style.item_background_color
+                } else if notification_count > 0 {
+                    Color::from_f32(0.3, 0.2, 0.1, 0.8)
+                } else {
+                    Color::TRANSPARENT
+                };
+                if bg_color.a > 0.0 {
+                    self.renderer.fill_rounded_rect(notif_row, item_radius, item_radius, bg_color);
+                }
+
+                // Bell icon
+                let bell_icon = "\u{f0f3}";
+                let icon_offset = 3.0 * scale;
+                let icon_rect = D2D_RECT_F {
+                    left: notif_row.left - icon_offset,
+                    top: notif_row.top,
+                    right: notif_row.right - icon_offset,
+                    bottom: notif_row.bottom,
+                };
+                let icon_color = if is_selected || is_hovered {
+                    style.icon_color_hover
+                } else if notification_count > 0 {
+                    Color::from_f32(1.0, 0.8, 0.3, 1.0)
+                } else {
+                    style.icon_color
+                };
+                let _ = self.renderer.draw_text_centered(bell_icon, &icon_format, icon_rect, icon_color);
+
+                // Badge with count if unread
+                if notification_count > 0 {
+                    let badge_size = 14.0 * scale;
+                    let badge_x = panel_left + panel_width_scaled - inner_padding - badge_size - 2.0 * scale;
+                    let badge_y = y + (row_height - badge_size) / 2.0;
+                    let badge_rect = D2D_RECT_F {
+                        left: badge_x,
+                        top: badge_y,
+                        right: badge_x + badge_size,
+                        bottom: badge_y + badge_size,
+                    };
+                    self.renderer.fill_rounded_rect(
+                        badge_rect,
+                        badge_size / 2.0,
+                        badge_size / 2.0,
+                        Color::from_f32(0.9, 0.2, 0.2, 1.0),
+                    );
+                    let count_str = if notification_count > 9 { "9+".to_string() } else { notification_count.to_string() };
+                    if let Ok(fmt) = self.renderer.create_text_format(&style.text_font_family, 9.0 * scale, true, false) {
+                        let _ = self.renderer.draw_text_centered(&count_str, &fmt, badge_rect, Color::WHITE);
+                    }
+                }
+
+                // Store bounds for hit testing
+                task_panel.notification_bounds = Some(Rect::new(
+                    notif_row.left,
+                    notif_row.top,
+                    notif_row.right - notif_row.left,
+                    row_height,
+                ));
+
+                // Add to item_states for keyboard navigation (use usize::MAX as sentinel for notification)
+                task_panel.item_states.push(TaskItemState {
+                    group_index: usize::MAX, // Sentinel value for notification
+                    task_index: None,
+                    bounds: Rect::new(
+                        notif_row.left,
+                        notif_row.top,
+                        notif_row.right - notif_row.left,
+                        row_height,
+                    ),
+                    is_group_header: false,
+                });
+            } else {
+                task_panel.notification_bounds = None;
+            }
+
             // Tooltip only in compact mode; collect first to avoid borrow conflicts
             let tooltip_data: Option<(String, f32, f32)> =
                 if let Some(hovered_idx) = task_panel.hovered_item {
@@ -3793,6 +4174,133 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
             }
 
             y += group_spacing;
+        }
+
+        // Render notification icon if there are PR reviews
+        if self.pr_reviews.has_reviews() {
+            let notification_count = self.pr_reviews.unread_count();
+            task_panel.notification_count = notification_count;
+
+            // Add some spacing before notification
+            y += row_spacing;
+
+            // Calculate item index for hover/selection
+            let item_index = task_panel.item_states.len();
+            let is_hovered = hovered == Some(item_index);
+            let is_selected = is_focused && selected == Some(item_index);
+
+            // Draw notification icon row
+            let notif_row = D2D_RECT_F {
+                left: panel_left + inner_padding,
+                top: y,
+                right: panel_left + panel_width_scaled - inner_padding,
+                bottom: y + row_height,
+            };
+
+            // Background (highlighted if selected, hovered, or has unread)
+            let bg_color = if is_selected {
+                style.selected_background_color
+            } else if is_hovered {
+                style.item_background_color
+            } else if notification_count > 0 {
+                Color::from_f32(0.3, 0.2, 0.1, 0.8) // Warm highlight for unread
+            } else {
+                Color::TRANSPARENT
+            };
+            if bg_color.a > 0.0 {
+                self.renderer.fill_rounded_rect(notif_row, item_radius, item_radius, bg_color);
+            }
+
+            // Bell icon (using NerdFont icon if available, or fallback)
+            let bell_icon = "\u{f0f3}"; // NerdFont bell icon, fallback to 🔔
+            let icon_rect = D2D_RECT_F {
+                left: notif_row.left + inner_padding,
+                top: notif_row.top + (row_height - icon_size) / 2.0,
+                right: notif_row.left + inner_padding + icon_size,
+                bottom: notif_row.top + (row_height + icon_size) / 2.0,
+            };
+            let icon_color = if is_selected || is_hovered {
+                style.icon_color_hover
+            } else if notification_count > 0 {
+                Color::from_f32(1.0, 0.8, 0.3, 1.0) // Gold for unread
+            } else {
+                style.icon_color
+            };
+            let _ = self.renderer.draw_text_centered(bell_icon, &icon_format, icon_rect, icon_color);
+
+            // Badge with count if unread
+            if notification_count > 0 {
+                let badge_size = 16.0 * scale;
+                let badge_x = icon_rect.right - 4.0 * scale;
+                let badge_y = icon_rect.top - 2.0 * scale;
+                let badge_rect = D2D_RECT_F {
+                    left: badge_x,
+                    top: badge_y,
+                    right: badge_x + badge_size,
+                    bottom: badge_y + badge_size,
+                };
+                // Red badge background
+                self.renderer.fill_rounded_rect(
+                    badge_rect,
+                    badge_size / 2.0,
+                    badge_size / 2.0,
+                    Color::from_f32(0.9, 0.2, 0.2, 1.0),
+                );
+                // Count text
+                let count_str = if notification_count > 9 {
+                    "9+".to_string()
+                } else {
+                    notification_count.to_string()
+                };
+                let badge_format = self.renderer.create_text_format(
+                    &style.text_font_family,
+                    10.0 * scale,
+                    true,
+                    false,
+                );
+                if let Ok(fmt) = badge_format {
+                    let _ = self.renderer.draw_text_centered(&count_str, &fmt, badge_rect, Color::WHITE);
+                }
+            }
+
+            // Label if expanded
+            if show_expanded {
+                let label = if notification_count > 0 {
+                    format!("PR Reviews ({})", notification_count)
+                } else {
+                    "PR Reviews".to_string()
+                };
+                let label_rect = D2D_RECT_F {
+                    left: icon_rect.right + inner_padding,
+                    top: notif_row.top,
+                    right: notif_row.right - inner_padding,
+                    bottom: notif_row.bottom,
+                };
+                let _ = self.renderer.draw_text(&label, &text_format, label_rect, style.text_color);
+            }
+
+            // Store bounds for hit testing
+            task_panel.notification_bounds = Some(Rect::new(
+                notif_row.left,
+                notif_row.top,
+                notif_row.right - notif_row.left,
+                row_height,
+            ));
+
+            // Add to item_states for keyboard navigation (use usize::MAX as sentinel for notification)
+            task_panel.item_states.push(TaskItemState {
+                group_index: usize::MAX, // Sentinel value for notification
+                task_index: None,
+                bounds: Rect::new(
+                    notif_row.left,
+                    notif_row.top,
+                    notif_row.right - notif_row.left,
+                    row_height,
+                ),
+                is_group_header: false,
+            });
+        } else {
+            task_panel.notification_bounds = None;
         }
 
         // Apply any pending selection now that item_states is populated
@@ -4230,6 +4738,12 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
     pub fn show(&mut self) {
         log!("show() - showing window in {:?} mode", self.current_mode);
         self.is_visible = true;
+
+        // Refresh PR reviews on window show
+        self.pr_reviews.refresh();
+        if let Some(ref mut task_panel) = self.task_panel {
+            task_panel.notification_count = self.pr_reviews.unread_count();
+        }
 
         // Resize window based on mode (this also updates renderer buffers)
         self.resize_for_mode();

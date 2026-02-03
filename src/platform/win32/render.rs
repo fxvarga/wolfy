@@ -1267,6 +1267,48 @@ impl Renderer {
         Ok(())
     }
 
+    /// Draw text with word wrapping within a rect (clips overflow)
+    pub fn draw_text_wrapped(
+        &mut self,
+        text: &str,
+        format: &IDWriteTextFormat,
+        rect: D2D_RECT_F,
+        color: Color,
+    ) -> Result<(), Error> {
+        let brush = self.get_brush(color)?;
+        let text_wide: Vec<u16> = text.encode_utf16().collect();
+
+        if let Some(ref target) = self.render_target {
+            unsafe {
+                let rect_width = rect.right - rect.left;
+                let rect_height = rect.bottom - rect.top;
+
+                // Create layout with word wrapping
+                let layout = self.dwrite_factory.CreateTextLayout(
+                    &text_wide,
+                    format,
+                    rect_width,
+                    rect_height,
+                )?;
+
+                // Word wrapping is default, but set explicitly
+                layout.SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP)?;
+
+                // Draw at rect origin
+                target.DrawTextLayout(
+                    D2D_POINT_2F {
+                        x: rect.left,
+                        y: rect.top,
+                    },
+                    &layout,
+                    &brush,
+                    D2D1_DRAW_TEXT_OPTIONS_CLIP, // Clip text that overflows
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Draw text centered within a rect
     pub fn draw_text_centered(
         &mut self,

@@ -17,10 +17,12 @@ mod log;
 
 mod animation;
 mod app;
+mod cwd_history;
 mod grid_window;
 mod history;
 mod mode;
 mod platform;
+mod pr_reviews;
 mod pty;
 mod state;
 mod task_runner;
