@@ -15,6 +15,14 @@ extern crate lalrpop_util;
 #[macro_use]
 mod log;
 
+// Clean Architecture layers
+mod adapters;
+mod application;
+mod domain;
+mod infrastructure;
+mod shared;
+
+// Legacy modules (to be migrated)
 mod animation;
 mod app;
 mod cwd_history;
@@ -386,7 +394,7 @@ fn main() {
 
     // Start file watch timer for theme hot-reload on launcher
     log!("Starting file watch timer for theme hot-reload...");
-    launcher.borrow().start_file_watch_timer();
+    launcher.borrow_mut().start_file_watch_timer();
 
     log!(
         "Wolfy started (multi-window). Hotkeys: Ctrl+0 (launcher), Ctrl+1 (theme), Ctrl+2 (wallpaper). F5=reload theme, F6=restart app."

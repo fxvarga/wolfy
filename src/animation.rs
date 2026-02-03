@@ -228,21 +228,42 @@ impl Animation {
 pub struct WindowAnimator {
     /// Current opacity animation (if any)
     pub opacity: Option<Animation>,
+    /// Current Y-offset animation for slide effect (if any)
+    pub slide_offset: Option<Animation>,
+    /// Current scale animation (if any)
+    pub scale: Option<Animation>,
     /// Animation duration in ms
     pub fade_duration_ms: u32,
     /// Easing function for animations
     pub easing: Easing,
     /// Whether animations are enabled
     pub enabled: bool,
+    /// Slide distance in pixels (how far below center to start)
+    pub slide_distance: f32,
+    /// Whether to use slide animation
+    pub slide_enabled: bool,
+    /// Whether to use scale animation
+    pub scale_enabled: bool,
+    /// Starting scale factor (e.g., 0.95 = start at 95% size)
+    pub scale_start: f32,
+    /// Target Y position for the window (stored when animation starts)
+    target_y: Option<i32>,
 }
 
 impl Default for WindowAnimator {
     fn default() -> Self {
         Self {
             opacity: None,
-            fade_duration_ms: 150, // 150ms default
-            easing: Easing::EASE_OUT_CUBIC,
+            slide_offset: None,
+            scale: None,
+            fade_duration_ms: 280, // 280ms for smooth dramatic animation
+            easing: Easing::EASE_OUT_QUART,
             enabled: true,
+            slide_distance: 48.0, // Slide up 48 pixels for dramatic effect
+            slide_enabled: true,  // Enable slide by default
+            scale_enabled: false, // Scale off by default (can be overwhelming)
+            scale_start: 0.97,    // Start at 97% scale
+            target_y: None,
         }
     }
 }
@@ -252,23 +273,96 @@ impl WindowAnimator {
     pub fn new(duration_ms: u32, easing: Easing) -> Self {
         Self {
             opacity: None,
+            slide_offset: None,
+            scale: None,
             fade_duration_ms: duration_ms,
             easing,
             enabled: true,
+            slide_distance: 48.0, // Dramatic slide distance
+            slide_enabled: true,
+            scale_enabled: false,
+            scale_start: 0.97,
+            target_y: None,
         }
     }
 
-    /// Start a fade-in animation
+    /// Configure slide animation
+    pub fn with_slide(mut self, enabled: bool, distance: f32) -> Self {
+        self.slide_enabled = enabled;
+        self.slide_distance = distance;
+        self
+    }
+
+    /// Configure scale animation
+    pub fn with_scale(mut self, enabled: bool, start_scale: f32) -> Self {
+        self.scale_enabled = enabled;
+        self.scale_start = start_scale;
+        self
+    }
+
+    /// Set the target Y position for slide animation (call before start_fade_in)
+    pub fn set_target_y(&mut self, y: i32) {
+        self.target_y = Some(y);
+    }
+
+    /// Get the target Y position (returns stored value or None)
+    pub fn get_target_y(&self) -> Option<i32> {
+        self.target_y
+    }
+
+    /// Start a fade-in animation with slide and optional scale
     pub fn start_fade_in(&mut self) {
         if self.enabled {
+            // Opacity: 0 -> 1
             self.opacity = Some(Animation::fade_in(self.fade_duration_ms, self.easing));
+
+            // Slide: offset -> 0 (slide up from below)
+            if self.slide_enabled {
+                self.slide_offset = Some(Animation::new(
+                    self.slide_distance,
+                    0.0,
+                    self.fade_duration_ms,
+                    self.easing,
+                ));
+            }
+
+            // Scale: start_scale -> 1.0
+            if self.scale_enabled {
+                self.scale = Some(Animation::new(
+                    self.scale_start,
+                    1.0,
+                    self.fade_duration_ms,
+                    self.easing,
+                ));
+            }
         }
     }
 
-    /// Start a fade-out animation
+    /// Start a fade-out animation with slide and optional scale
     pub fn start_fade_out(&mut self) {
         if self.enabled {
+            // Opacity: 1 -> 0
             self.opacity = Some(Animation::fade_out(self.fade_duration_ms, self.easing));
+
+            // Slide: 0 -> offset (slide down as it fades)
+            if self.slide_enabled {
+                self.slide_offset = Some(Animation::new(
+                    0.0,
+                    self.slide_distance * 0.5, // Slide less on exit (feels snappier)
+                    self.fade_duration_ms,
+                    self.easing,
+                ));
+            }
+
+            // Scale: 1.0 -> start_scale
+            if self.scale_enabled {
+                self.scale = Some(Animation::new(
+                    1.0,
+                    self.scale_start,
+                    self.fade_duration_ms,
+                    self.easing,
+                ));
+            }
         }
     }
 
@@ -277,29 +371,67 @@ impl WindowAnimator {
         self.opacity.as_ref().map(|a| a.value()).unwrap_or(1.0)
     }
 
+    /// Get current Y offset for slide animation (0.0 if no animation)
+    pub fn get_slide_offset(&self) -> f32 {
+        self.slide_offset.as_ref().map(|a| a.value()).unwrap_or(0.0)
+    }
+
+    /// Get current scale factor (1.0 if no animation)
+    pub fn get_scale(&self) -> f32 {
+        self.scale.as_ref().map(|a| a.value()).unwrap_or(1.0)
+    }
+
     /// Check if any animation is running
     pub fn is_animating(&self) -> bool {
         self.opacity
             .as_ref()
             .map(|a| !a.is_complete())
             .unwrap_or(false)
+            || self.slide_offset
+                .as_ref()
+                .map(|a| !a.is_complete())
+                .unwrap_or(false)
+            || self.scale
+                .as_ref()
+                .map(|a| !a.is_complete())
+                .unwrap_or(false)
     }
 
     /// Update animation state, returns true if still animating
     pub fn update(&mut self) -> bool {
+        let mut still_animating = false;
+
         if let Some(ref anim) = self.opacity {
-            if anim.is_complete() {
-                self.opacity = None;
-                return false;
+            if !anim.is_complete() {
+                still_animating = true;
             }
-            return true;
         }
-        false
+
+        if let Some(ref anim) = self.slide_offset {
+            if !anim.is_complete() {
+                still_animating = true;
+            }
+        }
+
+        if let Some(ref anim) = self.scale {
+            if !anim.is_complete() {
+                still_animating = true;
+            }
+        }
+
+        if !still_animating {
+            self.clear();
+        }
+
+        still_animating
     }
 
     /// Clear all animations
     pub fn clear(&mut self) {
         self.opacity = None;
+        self.slide_offset = None;
+        self.scale = None;
+        self.target_y = None;
     }
 }
 

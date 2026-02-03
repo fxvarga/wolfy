@@ -4,12 +4,12 @@ use std::path::{Path, PathBuf};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap;
-use windows::Win32::UI::WindowsAndMessaging::{
-    KillTimer, SetTimer, WM_DPICHANGED, WM_PAINT, WM_TIMER,
-};
+use windows::Win32::UI::WindowsAndMessaging::{WM_DPICHANGED, WM_PAINT, WM_TIMER};
 
 use crate::animation::{Easing, WindowAnimator};
+use crate::application::services::{TimerId, TimerService};
 use crate::cwd_history::CwdHistory;
+use crate::domain::services::FuzzyMatcher;
 use crate::history::History;
 use crate::log::{exe_dir, find_config_file};
 use crate::mode::Mode;
@@ -32,105 +32,8 @@ use crate::widget::{
 #[cfg(feature = "pr-reviews")]
 use crate::widget::{MarkdownView, MarkdownViewHit, MarkdownViewStyle};
 
-/// Cursor blink timer ID
-const TIMER_CURSOR_BLINK: usize = 1;
-/// Cursor blink interval in milliseconds
-const CURSOR_BLINK_MS: u32 = 530;
-/// Theme file watcher timer ID
-const TIMER_FILE_WATCH: usize = 2;
-/// File watch check interval in milliseconds
-const FILE_WATCH_MS: u32 = 500;
-/// Animation timer ID
-const TIMER_ANIMATION: usize = 3;
-/// Animation frame interval in milliseconds (~60fps)
-const ANIMATION_FRAME_MS: u32 = 16;
-/// Clock update timer ID
-const TIMER_CLOCK: usize = 4;
-/// Clock update interval in milliseconds (1 second)
-const CLOCK_UPDATE_MS: u32 = 1000;
-/// Task poll timer ID
-const TIMER_TASK_POLL: usize = 5;
-/// Task poll interval in milliseconds (100ms for responsive status updates)
-const TASK_POLL_MS: u32 = 100;
-/// Tail view refresh timer ID
-const TIMER_TAIL_REFRESH: usize = 6;
-/// Tail view refresh interval in milliseconds
-const TAIL_REFRESH_MS: u32 = 200;
-
 /// Application version from Cargo.toml
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Fuzzy match a query against a target string
-/// Returns Some(score) if matched, None if not matched
-/// Higher scores indicate better matches
-fn fuzzy_match(target: &str, query: &str) -> Option<i32> {
-    if query.is_empty() {
-        return Some(0);
-    }
-
-    let target_chars: Vec<char> = target.chars().collect();
-    let query_chars: Vec<char> = query.chars().collect();
-
-    // Check if all query chars appear in order in target
-    let mut target_idx = 0;
-    let mut query_idx = 0;
-    let mut score = 0i32;
-    let mut consecutive = 0;
-    let mut last_match_idx: Option<usize> = None;
-
-    while query_idx < query_chars.len() && target_idx < target_chars.len() {
-        if target_chars[target_idx] == query_chars[query_idx] {
-            // Matched a character
-
-            // Bonus for consecutive matches
-            if let Some(last) = last_match_idx {
-                if target_idx == last + 1 {
-                    consecutive += 1;
-                    score += consecutive * 5; // Growing bonus for consecutive
-                } else {
-                    consecutive = 0;
-                }
-            }
-
-            // Bonus for matching at start
-            if target_idx == 0 {
-                score += 15;
-            }
-
-            // Bonus for matching after separator (space, -, _, etc)
-            if target_idx > 0 {
-                let prev = target_chars[target_idx - 1];
-                if prev == ' ' || prev == '-' || prev == '_' || prev == '.' {
-                    score += 10;
-                }
-            }
-
-            // Bonus for matching uppercase in camelCase
-            if target_chars[target_idx].is_uppercase() {
-                score += 5;
-            }
-
-            last_match_idx = Some(target_idx);
-            query_idx += 1;
-            score += 1; // Base score for each match
-        }
-        target_idx += 1;
-    }
-
-    // All query chars must be found
-    if query_idx == query_chars.len() {
-        // Bonus for shorter targets (more precise match)
-        score += (100 - target_chars.len().min(100) as i32);
-
-        // Bonus if query matches a significant portion of target
-        let coverage = (query_chars.len() * 100) / target_chars.len().max(1);
-        score += coverage as i32 / 2;
-
-        Some(score)
-    } else {
-        None
-    }
-}
 
 /// Get the HyDE themes directory path
 fn hyde_themes_dir() -> Option<PathBuf> {
@@ -346,6 +249,10 @@ pub struct ThemeLayout {
     pub animation_duration_ms: u32,
     /// Animation easing type (ease-out, ease-in, ease-in-out, linear)
     pub animation_easing: String,
+    /// Slide animation distance in pixels (how far to slide up from)
+    pub animation_slide_distance: f32,
+    /// Whether slide animation is enabled
+    pub animation_slide_enabled: bool,
     /// Clock configuration for wallpaper panel overlay
     pub clock_config: ClockConfig,
 }
@@ -458,8 +365,10 @@ impl Default for ThemeLayout {
             listview_padding_right: 32.0,
             listview_padding_bottom: 16.0,
             listview_padding_left: 32.0,
-            animation_duration_ms: 200,
-            animation_easing: "ease-out-expo".to_string(),
+            animation_duration_ms: 280,
+            animation_easing: "ease-out-quart".to_string(),
+            animation_slide_distance: 48.0, // Slide up 48 pixels for dramatic effect
+            animation_slide_enabled: true,  // Enable slide by default
             clock_config: ClockConfig::default(),
         }
     }
@@ -617,6 +526,18 @@ impl ThemeLayout {
                 None,
                 "animation-easing",
                 &default.animation_easing,
+            ),
+            animation_slide_distance: theme.get_number(
+                "window",
+                None,
+                "animation-slide-distance",
+                default.animation_slide_distance as f64,
+            ) as f32,
+            animation_slide_enabled: theme.get_bool(
+                "window",
+                None,
+                "animation-slide-enabled",
+                default.animation_slide_enabled,
             ),
             clock_config: ClockConfig {
                 enabled: theme.get_bool(
@@ -912,6 +833,10 @@ pub struct App {
     tailview: TailView,
     /// Working directory history for interactive tasks
     cwd_history: CwdHistory,
+    /// Centralized timer management service
+    timer_service: TimerService,
+    /// Fuzzy matcher for search (injected from domain services)
+    fuzzy_matcher: FuzzyMatcher,
     /// PR Reviews tracker for notification widget
     #[cfg(feature = "pr-reviews")]
     pr_reviews: PrReviews,
@@ -1056,11 +981,17 @@ impl App {
 
         // Create window animator from theme settings
         let easing = Easing::from_name(&theme_layout.animation_easing);
-        let animator = WindowAnimator::new(theme_layout.animation_duration_ms, easing);
+        let animator = WindowAnimator::new(theme_layout.animation_duration_ms, easing)
+            .with_slide(
+                theme_layout.animation_slide_enabled,
+                theme_layout.animation_slide_distance,
+            );
         log!(
-            "  Created animator: {}ms, easing={:?}",
+            "  Created animator: {}ms, easing={:?}, slide={}px enabled={}",
             theme_layout.animation_duration_ms,
-            theme_layout.animation_easing
+            theme_layout.animation_easing,
+            theme_layout.animation_slide_distance,
+            theme_layout.animation_slide_enabled
         );
 
         // Load task panel configuration
@@ -1099,6 +1030,12 @@ impl App {
         // Initialize working directory history
         let cwd_history = CwdHistory::load_default();
 
+        // Initialize timer service for centralized timer management
+        let timer_service = TimerService::new(hwnd);
+
+        // Initialize fuzzy matcher from domain services
+        let fuzzy_matcher = FuzzyMatcher::new();
+
         // Initialize PR reviews tracker
         #[cfg(feature = "pr-reviews")]
         let pr_reviews = PrReviews::new_default();
@@ -1130,6 +1067,8 @@ impl App {
             task_runner,
             tailview,
             cwd_history,
+            timer_service,
+            fuzzy_matcher,
             #[cfg(feature = "pr-reviews")]
             pr_reviews,
             #[cfg(feature = "pr-reviews")]
@@ -1140,92 +1079,67 @@ impl App {
     }
 
     /// Start cursor blink timer
-    pub fn start_cursor_timer(&self) {
-        unsafe {
-            SetTimer(self.hwnd, TIMER_CURSOR_BLINK, CURSOR_BLINK_MS, None);
-        }
+    pub fn start_cursor_timer(&mut self) {
+        self.timer_service.start_cursor();
     }
 
     /// Start file watch timer (for theme hot-reload)
-    pub fn start_file_watch_timer(&self) {
-        unsafe {
-            SetTimer(self.hwnd, TIMER_FILE_WATCH, FILE_WATCH_MS, None);
-        }
+    pub fn start_file_watch_timer(&mut self) {
+        self.timer_service.start_file_watch();
     }
 
     /// Stop file watch timer
-    pub fn stop_file_watch_timer(&self) {
-        unsafe {
-            let _ = KillTimer(self.hwnd, TIMER_FILE_WATCH);
-        }
+    pub fn stop_file_watch_timer(&mut self) {
+        self.timer_service.stop_file_watch();
     }
 
     /// Stop cursor blink timer
-    pub fn stop_cursor_timer(&self) {
-        unsafe {
-            let _ = KillTimer(self.hwnd, TIMER_CURSOR_BLINK);
-        }
+    pub fn stop_cursor_timer(&mut self) {
+        self.timer_service.stop_cursor();
     }
 
     /// Start animation timer
-    fn start_animation_timer(&self) {
-        unsafe {
-            SetTimer(self.hwnd, TIMER_ANIMATION, ANIMATION_FRAME_MS, None);
-        }
+    fn start_animation_timer(&mut self) {
+        self.timer_service.start_animation();
     }
 
     /// Stop animation timer
-    fn stop_animation_timer(&self) {
-        unsafe {
-            let _ = KillTimer(self.hwnd, TIMER_ANIMATION);
-        }
+    fn stop_animation_timer(&mut self) {
+        self.timer_service.stop_animation();
     }
 
     /// Start clock update timer (if clock is enabled)
-    fn start_clock_timer(&self) {
+    fn start_clock_timer(&mut self) {
         if self.theme_layout.clock_config.enabled {
-            unsafe {
-                SetTimer(self.hwnd, TIMER_CLOCK, CLOCK_UPDATE_MS, None);
-            }
+            self.timer_service.start_clock();
         }
     }
 
     /// Stop clock update timer
-    fn stop_clock_timer(&self) {
-        unsafe {
-            let _ = KillTimer(self.hwnd, TIMER_CLOCK);
-        }
+    fn stop_clock_timer(&mut self) {
+        self.timer_service.stop_clock();
     }
 
     /// Start task poll timer (for checking background task completion)
-    fn start_task_poll_timer(&self) {
-        unsafe {
-            SetTimer(self.hwnd, TIMER_TASK_POLL, TASK_POLL_MS, None);
-        }
+    fn start_task_poll_timer(&mut self) {
+        self.timer_service.start_task_poll();
     }
 
     /// Stop task poll timer
-    fn stop_task_poll_timer(&self) {
-        unsafe {
-            let _ = KillTimer(self.hwnd, TIMER_TASK_POLL);
-        }
+    fn stop_task_poll_timer(&mut self) {
+        self.timer_service.stop_task_poll();
     }
 
     /// Start tail refresh timer (for updating output view)
-    fn start_tail_refresh_timer(&self) {
-        log!("Starting tail refresh timer ({}ms interval), timer_id={}", TAIL_REFRESH_MS, TIMER_TAIL_REFRESH);
-        unsafe {
-            let result = SetTimer(self.hwnd, TIMER_TAIL_REFRESH, TAIL_REFRESH_MS, None);
-            log!("SetTimer returned: {}", result);
-        }
+    fn start_tail_refresh_timer(&mut self) {
+        log!("Starting tail refresh timer");
+        self.timer_service.start_tail_refresh();
     }
 
     /// Stop tail refresh timer
-    fn stop_tail_refresh_timer(&self) {
+    fn stop_tail_refresh_timer(&mut self) {
         log!("Stopping tail refresh timer");
-        unsafe {
-            let _ = KillTimer(self.hwnd, TIMER_TAIL_REFRESH);
-        }
+        self.timer_service.stop_tail_refresh();
     }
 
     /// Handle window procedure messages
@@ -1242,7 +1156,7 @@ impl App {
         }
 
         // Handle tail refresh timer FIRST (before translate_message)
-        if msg == WM_TIMER && wparam.0 == TIMER_TAIL_REFRESH {
+        if msg == WM_TIMER && wparam.0 == TimerId::TailRefresh as usize {
             log!(">>> TIMER_TAIL_REFRESH received, uses_tail_view={}", self.current_mode.uses_tail_view());
             if self.current_mode.uses_tail_view() {
                 log!(">>> Calling tailview.refresh()");
@@ -1300,21 +1214,23 @@ impl App {
                 self.paint();
                 return Some(LRESULT(0));
             }
-            WM_TIMER if wparam.0 == TIMER_CURSOR_BLINK => {
+            WM_TIMER if wparam.0 == TimerId::CursorBlink as usize => {
                 self.textbox.toggle_cursor_blink();
                 invalidate_window(self.hwnd);
                 return Some(LRESULT(0));
             }
-            WM_TIMER if wparam.0 == TIMER_FILE_WATCH => {
+            WM_TIMER if wparam.0 == TimerId::FileWatch as usize => {
                 self.check_theme_file_changed();
                 return Some(LRESULT(0));
             }
-            WM_TIMER if wparam.0 == TIMER_ANIMATION => {
+            WM_TIMER if wparam.0 == TimerId::Animation as usize => {
                 // Update animation state
                 if self.animator.update() {
-                    // Still animating - just update opacity without re-rendering content
+                    // Still animating - update opacity and slide offset
                     let opacity = self.animator.get_opacity();
-                    let _ = self.renderer.update_opacity_only(opacity);
+                    let y_offset = self.animator.get_slide_offset();
+                    let target_y = self.animator.get_target_y();
+                    let _ = self.renderer.update_animation(opacity, target_y, y_offset);
                 } else {
                     // Animation complete - stop the timer and start clock timer
                     self.stop_animation_timer();
@@ -1322,13 +1238,13 @@ impl App {
                 }
                 return Some(LRESULT(0));
             }
-            WM_TIMER if wparam.0 == TIMER_CLOCK => {
+            WM_TIMER if wparam.0 == TimerId::Clock as usize => {
                 // Clock tick - repaint to update time display
                 self.renderer.mark_dirty();
                 invalidate_window(self.hwnd);
                 return Some(LRESULT(0));
             }
-            WM_TIMER if wparam.0 == TIMER_TASK_POLL => {
+            WM_TIMER if wparam.0 == TimerId::TaskPoll as usize => {
                 // Poll background tasks for completion
                 let status_changed = self.task_runner.poll();
                 if status_changed {
@@ -2899,15 +2815,17 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
                     let subtext_lower = item.subtext.as_ref().map(|s| s.to_lowercase());
 
                     // Try fuzzy match on text
-                    if let Some(score) = fuzzy_match(&text_lower, &query) {
-                        return Some((score, item.clone()));
+                    let result = self.fuzzy_matcher.fuzzy_match(&query, &text_lower);
+                    if result.matched {
+                        return Some((result.score, item.clone()));
                     }
 
                     // Try fuzzy match on subtext
                     if let Some(subtext) = &subtext_lower {
-                        if let Some(score) = fuzzy_match(subtext, &query) {
+                        let result = self.fuzzy_matcher.fuzzy_match(&query, subtext);
+                        if result.matched {
                             // Subtext matches get lower priority
-                            return Some((score - 100, item.clone()));
+                            return Some((result.score - 100, item.clone()));
                         }
                     }
 
@@ -3019,6 +2937,20 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
             self.theme_layout.wallpaper_panel_width,
             self.theme_layout.mainbox_padding,
             self.theme_layout.mainbox_children
+        );
+
+        // Update animator with new animation settings from theme
+        let easing = Easing::from_name(&self.theme_layout.animation_easing);
+        self.animator.fade_duration_ms = self.theme_layout.animation_duration_ms;
+        self.animator.easing = easing;
+        self.animator.slide_distance = self.theme_layout.animation_slide_distance;
+        self.animator.slide_enabled = self.theme_layout.animation_slide_enabled;
+        log!(
+            "  Updated animator: {}ms, easing={}, slide={}px, enabled={}",
+            self.animator.fade_duration_ms,
+            self.theme_layout.animation_easing,
+            self.animator.slide_distance,
+            self.animator.slide_enabled
         );
 
         // Update task panel style
@@ -4794,6 +4726,15 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
 
         // Mark renderer as dirty to force a full render
         self.renderer.mark_dirty();
+
+        // Store the target Y position for slide animation BEFORE starting animation
+        // Get current window rect (after resize/reposition)
+        unsafe {
+            let mut rect = windows::Win32::Foundation::RECT::default();
+            windows::Win32::UI::WindowsAndMessaging::GetWindowRect(self.hwnd, &mut rect).ok();
+            self.animator.set_target_y(rect.top);
+            log!("  Stored target Y position: {}", rect.top);
+        }
 
         // Start fade-in animation BEFORE showing window
         // This ensures the first paint has opacity 0

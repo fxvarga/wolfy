@@ -424,6 +424,16 @@ impl Renderer {
         Ok(())
     }
 
+    /// Update window opacity and position offset for animation
+    /// `target_y` is the final resting Y position, `y_offset` is how far from that to render
+    pub fn update_animation(&self, opacity: f32, target_y: Option<i32>, y_offset: f32) -> Result<(), Error> {
+        log!("update_animation(opacity={}, target_y={:?}, y_offset={}) called", opacity, target_y, y_offset);
+        if let Some(ref offscreen) = self.offscreen {
+            self.update_layered_window_animated(offscreen, opacity, target_y, y_offset)?;
+        }
+        Ok(())
+    }
+
     /// Update the layered window with per-pixel alpha
     fn update_layered_window(&self, offscreen: &OffscreenBuffer) -> Result<(), Error> {
         self.update_layered_window_with_opacity(offscreen, 1.0)
@@ -435,7 +445,18 @@ impl Renderer {
         offscreen: &OffscreenBuffer,
         opacity: f32,
     ) -> Result<(), Error> {
-        log!("update_layered_window_with_opacity({}) called", opacity);
+        self.update_layered_window_animated(offscreen, opacity, None, 0.0)
+    }
+
+    /// Update the layered window with opacity and Y offset for slide animation
+    fn update_layered_window_animated(
+        &self,
+        offscreen: &OffscreenBuffer,
+        opacity: f32,
+        target_y: Option<i32>,
+        y_offset: f32,
+    ) -> Result<(), Error> {
+        log!("update_layered_window_animated(opacity={}, target_y={:?}, y_offset={}) called", opacity, target_y, y_offset);
 
         let (width, height) = offscreen.size();
         let alpha = (opacity.clamp(0.0, 1.0) * 255.0) as u8;
@@ -455,10 +476,28 @@ impl Renderer {
                 AlphaFormat: windows::Win32::Graphics::Gdi::AC_SRC_ALPHA as u8,
             };
 
+            // Calculate window position with slide offset
+            // If we have a target_y (stored when animation started), use it as base
+            // Otherwise, if y_offset is significant, get current position
+            let pt_dest = if let Some(base_y) = target_y {
+                // Use stored target position + offset for smooth animation
+                let mut rect = windows::Win32::Foundation::RECT::default();
+                windows::Win32::UI::WindowsAndMessaging::GetWindowRect(self.hwnd, &mut rect).ok();
+                Some(POINT {
+                    x: rect.left,
+                    y: base_y + y_offset as i32,
+                })
+            } else {
+                None // No slide animation, keep current position
+            };
+
+            // Convert Option<POINT> to Option<*const POINT> for UpdateLayeredWindow
+            let pt_dest_ptr = pt_dest.as_ref().map(|p| p as *const POINT);
+
             let result = UpdateLayeredWindow(
                 self.hwnd,
                 HDC::default(), // Use screen DC
-                None,           // Keep window position
+                pt_dest_ptr,    // Window position with optional Y offset
                 Some(&size),
                 offscreen.dc(),
                 Some(&pt_src),
@@ -470,7 +509,7 @@ impl Renderer {
             if result.is_err() {
                 log!("  UpdateLayeredWindow failed: {:?}", result);
             } else {
-                log!("  UpdateLayeredWindow succeeded (alpha={})", alpha);
+                log!("  UpdateLayeredWindow succeeded (alpha={}, target_y={:?}, y_offset={})", alpha, target_y, y_offset);
             }
         }
 

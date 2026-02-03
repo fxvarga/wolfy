@@ -1,0 +1,5 @@
+# Wolfy Extensions Configuration
+
+[pr_reviews]
+enabled = true
+reviews_dir = "C:\\Users\\fevargas\\Source\\MSFT\\PRReviewer\\pr-reports"

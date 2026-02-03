@@ -41,8 +41,13 @@ window {
     border-radius: 24;
     border-color: transparent;
     hotkey: "ctrl+0";
-    animation-duration: 280;
-    animation-easing: ease-out-expo;
+
+    /* ═══ ANIMATION SETTINGS ═══
+       Tweak these for dramatic entrance! Hot-reload with F5 */
+    animation-duration: 320;          /* ms - higher = slower/smoother */
+    animation-easing: ease-out-quart; /* ease-out-expo, ease-out-cubic, ease-out-back */
+    animation-slide-distance: 60;     /* pixels to slide up from */
+    animation-slide-enabled: true;    /* false to disable slide */
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
