@@ -1,0 +1,75 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ARCH NEON — Cyberpunk Arch Linux Aesthetic
+   ═══════════════════════════════════════════════════════════════════════════
+
+   A striking dark theme inspired by the iconic Arch Linux neon wallpapers.
+   Deep midnight blues with electric cyan and hot magenta accents.
+
+   Palette inspired by: archimg.cc wallpaper 090.png
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    /* ─── Terminal Font ─── */
+    term-font: "Cascadia Mono";
+
+    /* ─── Terminal ANSI Colors ─── */
+    term-black:             #0d0d1a;
+    term-red:               #ff3860;
+    term-green:             #00d1b2;
+    term-yellow:            #ffdd57;
+    term-blue:              #3273dc;
+    term-magenta:           #b86bff;
+    term-cyan:              #00e5ff;
+    term-white:             #c5c8d6;
+    term-bright-black:      #363655;
+    term-bright-red:        #ff6b8a;
+    term-bright-green:      #3dffd8;
+    term-bright-yellow:     #ffe580;
+    term-bright-blue:       #5a9cff;
+    term-bright-magenta:    #d18fff;
+    term-bright-cyan:       #66f2ff;
+    term-bright-white:      #e8e9f0;
+    term-foreground:        #e0e2ed;
+    term-background:        #0a0a14;
+    term-cursor:            #00e5ff;
+
+    /* ─── Surface Colors ─── */
+    surface-deep:           #08081a;      /* Deepest midnight blue */
+    surface-elevated:       #12122b;      /* Raised surfaces */
+    surface-subtle:         #1e1e40;      /* Subtle backgrounds */
+
+    /* ─── Accent Colors ─── */
+    accent-primary:         #00e5ff;      /* Electric cyan - main accent */
+    accent-secondary:       #ff00aa;      /* Hot magenta - secondary accent */
+    accent-tertiary:        #b86bff;      /* Neon purple - tertiary accent */
+
+    /* ─── Text Hierarchy ─── */
+    text-primary:           #ffffff;      /* Primary text */
+    text-secondary:         #c5c8e0;      /* Secondary text */
+    text-muted:             #7a7d99;      /* Muted/placeholder text */
+    text-disabled:          #4a4d66;      /* Disabled text */
+
+    /* ─── Derived Colors (with alpha) ─── */
+    window-bg:              #08081a18;    /* Ultra-subtle window tint */
+    surface-panel:          #08081aee;    /* Panel background (93% opacity) */
+    taskpanel-bg:           #08081ac0;    /* Task panel (75% opacity) */
+    tailview-bg:            #08081af2;    /* Terminal background (95% opacity) */
+
+    input-bg:               #ffffff06;    /* Input field background */
+    hover-bg:               #00e5ff18;    /* Hover state - cyan tint */
+    item-hover-bg:          #00e5ff12;    /* List item hover */
+
+    accent-primary-alpha:   #00e5ff50;    /* Accent with transparency */
+    text-muted-alpha:       #7a7d9980;    /* Muted text with transparency */
+
+    tree-line:              #7a7d9960;    /* Tree connector lines */
+    chevron:                #7a7d9980;    /* Chevron/arrow color */
+
+    /* ─── Clock Colors ─── */
+    clock-text:             #00e5ffff;    /* Clock in electric cyan */
+    clock-shadow:           #000000cc;    /* Clock shadow (80% black) */
+
+    /* ─── Selection Colors ─── */
+    select-bg:              #00e5ff;      /* Selected item - electric cyan */
+    select-fg:              #08081a;      /* Selected item text - dark */
+}

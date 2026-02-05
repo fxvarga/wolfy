@@ -2626,7 +2626,29 @@ Get-Content -Path '{}' -Wait -Tail 50"#,
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         const DETACHED_PROCESS: u32 = 0x00000008;
 
-        // Try to run the command
+        log!("Launching: {}", command);
+
+        // Handle UWP apps (shell:AppsFolder paths) using explorer.exe
+        // Example: shell:AppsFolder\MSTeams_8wekyb3d8bbwe!MSTeams
+        if command.starts_with("shell:AppsFolder") {
+            let result = Command::new("explorer.exe")
+                .arg(command)
+                .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+                .spawn();
+
+            return match result {
+                Ok(_) => {
+                    log!("Successfully launched UWP app: {}", command);
+                    Ok(())
+                }
+                Err(e) => {
+                    log!("Failed to launch UWP app {}: {}", command, e);
+                    Err(windows::core::Error::from_win32())
+                }
+            };
+        }
+
+        // Try to run the command using cmd /C start
         let result = Command::new("cmd")
             .args(["/C", "start", "", command])
             .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)

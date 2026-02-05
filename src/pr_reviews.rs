@@ -10,7 +10,7 @@
 //! reviews_dir = "C:\\path\\to\\reviews"
 //! ```
 
-use chrono::{Local, NaiveDate};
+use chrono::{Duration, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
@@ -183,7 +183,7 @@ struct ViewedState {
 pub struct PrReviews {
     /// Configuration
     config: PrReviewsConfig,
-    /// Today's reviews
+    /// Reviews from the past week
     reviews: Vec<PrReview>,
     /// Path to state file
     state_path: PathBuf,
@@ -222,11 +222,46 @@ impl PrReviews {
         self.config.enabled
     }
 
-    /// Refresh the list of today's reviews
+    /// Refresh the list of reviews from the past week
     pub fn refresh(&mut self) {
-        let today = Local::now().date_naive();
-        self.reviews = self.scan_reviews_for_date(today);
+        self.reviews = self.scan_reviews_for_past_week();
         self.load_viewed_state();
+    }
+
+    /// Scan directory for reviews from the past 7 days
+    fn scan_reviews_for_past_week(&self) -> Vec<PrReview> {
+        use std::collections::HashMap;
+
+        let today = Local::now().date_naive();
+        let mut all_reviews = Vec::new();
+
+        // Scan for each of the past 7 days
+        for days_ago in 0..7 {
+            if let Some(date) = today.checked_sub_signed(Duration::days(days_ago)) {
+                let mut reviews = self.scan_reviews_for_date(date);
+                all_reviews.append(&mut reviews);
+            }
+        }
+
+        // Deduplicate: keep only the latest review per PR number
+        let mut latest_by_pr: HashMap<u32, PrReview> = HashMap::new();
+        for review in all_reviews {
+            latest_by_pr
+                .entry(review.pr_number)
+                .and_modify(|existing| {
+                    if review.date > existing.date {
+                        *existing = review.clone();
+                    }
+                })
+                .or_insert(review);
+        }
+
+        // Collect and sort by date (newest first), then by PR number
+        let mut reviews: Vec<PrReview> = latest_by_pr.into_values().collect();
+        reviews.sort_by(|a, b| {
+            b.date.cmp(&a.date).then_with(|| a.pr_number.cmp(&b.pr_number))
+        });
+        reviews
     }
 
     /// Scan directory for reviews matching a specific date

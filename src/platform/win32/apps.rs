@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Shell::{
-    Common::ITEMIDLIST, FOLDERID_AppsFolder, IEnumIDList, IShellFolder, IShellItem, SHBindToObject,
-    SHCreateItemFromIDList, SHGetDesktopFolder, SHGetKnownFolderIDList, SHCONTF_NONFOLDERS,
-    SIGDN_NORMALDISPLAY,
+    Common::ITEMIDLIST, FOLDERID_AppsFolder, IEnumIDList, IShellFolder, IShellItem,
+    ILCombine, SHBindToObject, SHCreateItemFromIDList, SHGetDesktopFolder,
+    SHGetKnownFolderIDList, SHCONTF_NONFOLDERS, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_NORMALDISPLAY,
 };
 
 use super::shortcut::parse_lnk;
@@ -353,8 +353,11 @@ fn discover_apps_folder() -> Vec<AppEntry> {
         let mut enum_list: Option<IEnumIDList> = None;
         let hr =
             apps_folder.EnumObjects(HWND::default(), SHCONTF_NONFOLDERS.0 as u32, &mut enum_list);
-        if hr.is_err() || enum_list.is_none() {
+        if hr.is_err() {
             log!("Failed to enumerate AppsFolder: {:?}", hr);
+            return apps;
+        }
+        if enum_list.is_none() {
             return apps;
         }
         let enum_list = enum_list.unwrap();
@@ -373,33 +376,52 @@ fn discover_apps_folder() -> Vec<AppEntry> {
                 break;
             }
 
-            // Try to get display name via IShellItem
-            if let Ok(shell_item) = SHCreateItemFromIDList::<IShellItem>(child_pidl) {
+            // Combine parent (AppsFolder) and child PIDLs to get absolute PIDL
+            let absolute_pidl = ILCombine(Some(pidl), Some(child_pidl));
+            if absolute_pidl.is_null() {
+                windows::Win32::System::Com::CoTaskMemFree(Some(child_pidl as *const _));
+                continue;
+            }
+
+            // Try to get display name via IShellItem using absolute PIDL
+            if let Ok(shell_item) = SHCreateItemFromIDList::<IShellItem>(absolute_pidl) {
                 if let Ok(display_name_ptr) = shell_item.GetDisplayName(SIGDN_NORMALDISPLAY) {
                     let name = pwstr_to_string(display_name_ptr);
-
-                    // Skip filtered names
-                    if !should_filter_name(&name) && !name.is_empty() {
-                        // For UWP apps, we use the name as ID (we don't have a better unique ID easily)
-                        // The launch target will be the app name for shell:AppsFolder
-                        apps.push(AppEntry {
-                            id: format!("uwp:{}", name),
-                            name: name.clone(),
-                            description: String::new(), // UWP apps don't easily expose description
-                            icon_source: String::new(), // Icon loading for UWP is complex, skip for now
-                            launch_target: name,
-                            is_uwp: true,
-                        });
-                    }
 
                     // Free the display name string
                     windows::Win32::System::Com::CoTaskMemFree(Some(
                         display_name_ptr.0 as *const _,
                     ));
+
+                    // Skip filtered names
+                    if !should_filter_name(&name) && !name.is_empty() {
+                        // Get the AUMID (App User Model ID) for launching
+                        let launch_target =
+                            if let Ok(aumid_ptr) = shell_item.GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING) {
+                                let aumid = pwstr_to_string(aumid_ptr);
+                                windows::Win32::System::Com::CoTaskMemFree(Some(
+                                    aumid_ptr.0 as *const _,
+                                ));
+                                // Format as shell:AppsFolder path for explorer.exe to launch
+                                format!("shell:AppsFolder\\{}", aumid)
+                            } else {
+                                name.clone()
+                            };
+
+                        apps.push(AppEntry {
+                            id: format!("uwp:{}", name),
+                            name: name.clone(),
+                            description: String::new(),
+                            icon_source: String::new(),
+                            launch_target,
+                            is_uwp: true,
+                        });
+                    }
                 }
             }
 
-            // Free the PIDL
+            // Free the PIDLs
+            windows::Win32::System::Com::CoTaskMemFree(Some(absolute_pidl as *const _));
             windows::Win32::System::Com::CoTaskMemFree(Some(child_pidl as *const _));
         }
     }
